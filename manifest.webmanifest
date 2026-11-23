@@ -1,7 +1,7 @@
 {
-  "name": "Theny AÃ§aÃ­ | Pedidos",
-  "short_name": "Theny AÃ§aÃ­",
-  "description": "Monte e acompanhe pedidos da Theny AÃ§aÃ­.",
+  "name": "Theny Açaí | Pedidos",
+  "short_name": "Theny Açaí",
+  "description": "Monte e acompanhe pedidos da Theny Açaí.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
