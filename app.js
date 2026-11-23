@@ -193,6 +193,7 @@ function renderOrders() {
 
 function renderRoute() {
   const vendor = location.hash === "#painel";
+  document.body.classList.toggle("vendor-mode", vendor);
   document.querySelector("#vendor-view").hidden = !vendor;
   document.querySelector("#top").hidden = vendor;
   document.querySelector(".hero-copy").hidden = vendor;
