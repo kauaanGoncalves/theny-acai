@@ -3,9 +3,9 @@ const STOCK_KEY = "theny-acai-stock-v1";
 const TOPPINGS_KEY = "theny-acai-toppings-v1";
 const SAUCES_KEY = "theny-acai-sauces-v1";
 const PRODUCTS_KEY = "theny-acai-products-v1";
-const DEFAULT_TOPPINGS = ["Leite em PÃ³", "Confete", "Chocobol", "Granulado", "Jujuba", "Granola", "PaÃ§oca"];
+const DEFAULT_TOPPINGS = ["Leite em Pó", "Confete", "Chocobol", "Granulado", "Jujuba", "Granola", "Paçoca"];
 const DEFAULT_SAUCES = ["Morango", "Chocolate", "Leite Condensado"];
-const DEFAULT_PRODUCTS = [{ id: "potinho", name: "Potinho", icon: "ðŸ‡", toppingLimit: 3, sauceLimit: 2 }, { id: "copinho", name: "Copinho", icon: "ðŸ¥£", toppingLimit: 1, sauceLimit: 1, flavors: ["AÃ§aÃ­", "Creme"] }];
+const DEFAULT_PRODUCTS = [{ id: "potinho", name: "Potinho", icon: "🍇", toppingLimit: 3, sauceLimit: 2 }, { id: "copinho", name: "Copinho", icon: "🥣", toppingLimit: 1, sauceLimit: 1, flavors: ["Açaí", "Creme"] }];
 const form = document.querySelector("#order-form");
 const flavorPanel = document.querySelector("#flavor-panel");
 const ordersRoot = document.querySelector("#orders-list");
@@ -18,7 +18,7 @@ let products = load(PRODUCTS_KEY, DEFAULT_PRODUCTS);
 let toastTimer;
 
 function load(key, fallback) { try { const value = JSON.parse(localStorage.getItem(key) || "null"); return Array.isArray(value) ? value : fallback; } catch { return fallback; } }
-function persist(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { notify("NÃ£o foi possÃ­vel salvar neste navegador."); } }
+function persist(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { notify("Não foi possível salvar neste navegador."); } }
 function product() { return form.elements.product.value; }
 function selected(group) { return [...form.querySelectorAll(`[name="${group}"]:checked`)].map((input) => input.value); }
 function isUnavailable(item) { return unavailable.includes(item); }
@@ -42,10 +42,10 @@ function enforceLimit(group) {
   const checked = selected(group);
   if (checked.length > limit) {
     [...form.querySelectorAll(`[name="${group}"]:checked`)].at(-1).checked = false;
-    notify(`VocÃª pode escolher atÃ© ${limit} ${group === "topping" ? "complemento(s)" : "calda(s)"}.`);
+    notify(`Você pode escolher até ${limit} ${group === "topping" ? "complemento(s)" : "calda(s)"}.`);
   }
   const current = selected(group).length;
-  document.querySelector(group === "topping" ? "#topping-counter" : "#sauce-counter").textContent = current ? `${current} de ${limit} escolhido(s)` : `Escolha atÃ© ${limit}`;
+  document.querySelector(group === "topping" ? "#topping-counter" : "#sauce-counter").textContent = current ? `${current} de ${limit} escolhido(s)` : `Escolha até ${limit}`;
   form.querySelectorAll(`[name="${group}"]`).forEach((input) => {
     const unavailableItem = isUnavailable(input.value);
     const locked = unavailableItem || (!input.checked && current >= limit);
@@ -78,9 +78,9 @@ function renderProducts() {
   root.replaceChildren(...products.map((item) => {
     const label = document.createElement("label"); label.className = "product-option"; label.dataset.product = item.id;
     const radio = document.createElement("input"); radio.type = "radio"; radio.name = "product"; radio.value = item.id; radio.checked = item.id === activeId;
-    const icon = document.createElement("span"); icon.className = "product-emoji"; icon.textContent = item.icon || "ðŸ§";
+    const icon = document.createElement("span"); icon.className = "product-emoji"; icon.textContent = item.icon || "🍧";
     const title = document.createElement("span"); title.className = "product-title"; title.textContent = item.name;
-    const detail = document.createElement("span"); detail.className = "product-limit"; detail.textContent = `${item.toppingLimit} complemento(s) Â· ${item.sauceLimit} calda(s)`;
+    const detail = document.createElement("span"); detail.className = "product-limit"; detail.textContent = `${item.toppingLimit} complemento(s) · ${item.sauceLimit} calda(s)`;
     const mark = document.createElement("span"); mark.className = "radio-mark";
     label.append(radio, icon, title, detail, mark); return label;
   }));
@@ -107,10 +107,10 @@ function renderStock() {
       const button = document.createElement("button"); button.type = "button";
       button.className = `stock-chip${isUnavailable(item) ? " unavailable" : ""}`;
       button.textContent = item; button.setAttribute("aria-pressed", String(isUnavailable(item)));
-      button.setAttribute("aria-label", `${item}: ${isUnavailable(item) ? "indisponÃ­vel, toque para liberar" : "disponÃ­vel, toque para riscar"}`);
+      button.setAttribute("aria-label", `${item}: ${isUnavailable(item) ? "indisponível, toque para liberar" : "disponível, toque para riscar"}`);
       button.addEventListener("click", () => toggleUnavailable(item)); wrap.append(button);
       if (!(selector === "#topping-stock" ? DEFAULT_TOPPINGS : DEFAULT_SAUCES).includes(item)) {
-        const remove = document.createElement("button"); remove.type = "button"; remove.className = "delete-option"; remove.textContent = "Ã—";
+        const remove = document.createElement("button"); remove.type = "button"; remove.className = "delete-option"; remove.textContent = "×";
         remove.setAttribute("aria-label", `Excluir ${item}`); remove.addEventListener("click", () => deleteOption(selector === "#topping-stock" ? "topping" : "sauce", item)); wrap.append(remove);
       }
       return wrap;
@@ -118,9 +118,9 @@ function renderStock() {
   });
   const productRoot = document.querySelector("#product-stock");
   productRoot.replaceChildren(...products.map((item) => {
-    const chip = document.createElement("span"); chip.className = "stock-chip product-chip"; chip.textContent = `${item.icon || "ðŸ§"} ${item.name}`;
+    const chip = document.createElement("span"); chip.className = "stock-chip product-chip"; chip.textContent = `${item.icon || "🍧"} ${item.name}`;
     if (item.id !== "potinho" && item.id !== "copinho") {
-      const remove = document.createElement("button"); remove.type = "button"; remove.className = "delete-product"; remove.textContent = "Ã—"; remove.setAttribute("aria-label", `Excluir ${item.name}`);
+      const remove = document.createElement("button"); remove.type = "button"; remove.className = "delete-product"; remove.textContent = "×"; remove.setAttribute("aria-label", `Excluir ${item.name}`);
       remove.addEventListener("click", () => deleteProduct(item.id)); chip.append(remove);
     }
     return chip;
@@ -129,11 +129,11 @@ function renderStock() {
 
 function addOption(kind, value) {
   const list = kind === "topping" ? toppings : sauces;
-  if (list.some((entry) => entry.toLocaleLowerCase("pt-BR") === value.toLocaleLowerCase("pt-BR"))) { notify("Essa opÃ§Ã£o jÃ¡ existe."); return; }
+  if (list.some((entry) => entry.toLocaleLowerCase("pt-BR") === value.toLocaleLowerCase("pt-BR"))) { notify("Essa opção já existe."); return; }
   if (kind === "topping") { toppings = [...toppings, value]; persist(TOPPINGS_KEY, toppings); }
   else { sauces = [...sauces, value]; persist(SAUCES_KEY, sauces); }
   renderStock(); makeOptions(document.querySelector(kind === "topping" ? "#topping-options" : "#sauce-options"), listFor(kind), kind);
-  enforceLimit(kind); notify("OpÃ§Ã£o adicionada!");
+  enforceLimit(kind); notify("Opção adicionada!");
 }
 function listFor(kind) { return kind === "topping" ? toppings : sauces; }
 function deleteOption(kind, value) {
@@ -147,7 +147,7 @@ function deleteProduct(id) {
   renderProducts(); updateProduct(); renderStock();
 }
 function addProduct(name, icon) {
-  if (products.some((item) => item.name.toLocaleLowerCase("pt-BR") === name.toLocaleLowerCase("pt-BR"))) { notify("Esse produto jÃ¡ existe."); return; }
+  if (products.some((item) => item.name.toLocaleLowerCase("pt-BR") === name.toLocaleLowerCase("pt-BR"))) { notify("Esse produto já existe."); return; }
   const id = `produto-${Date.now()}`;
   products = [...products, { id, name, icon, toppingLimit: 3, sauceLimit: 2 }]; persist(PRODUCTS_KEY, products);
   renderProducts(); form.elements.product.value = id; updateProduct(); renderStock(); notify("Produto cadastrado!");
@@ -162,22 +162,22 @@ function makeOrderCard(order) {
   const time = document.createElement("time"); time.className = "order-time"; time.dateTime = order.createdAt;
   time.textContent = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(order.createdAt));
   info.append(name, time);
-  const remove = document.createElement("button"); remove.className = "remove-order"; remove.type = "button"; remove.textContent = "Ã—";
+  const remove = document.createElement("button"); remove.className = "remove-order"; remove.type = "button"; remove.textContent = "×";
   remove.setAttribute("aria-label", `Excluir pedido de ${order.name}`);
   remove.addEventListener("click", () => { orders = orders.filter((item) => item.id !== order.id); persist(STORAGE_KEY, orders); renderOrders(); });
   top.append(info, remove);
   const productTag = document.createElement("span"); productTag.className = "order-product";
-  productTag.textContent = `${order.productIcon || "ðŸ§"} ${order.productName || order.product}${order.flavor ? ` Â· ${order.flavor}` : ""}`;
+  productTag.textContent = `${order.productIcon || "🍧"} ${order.productName || order.product}${order.flavor ? ` · ${order.flavor}` : ""}`;
   const detail = document.createElement("p"); detail.className = "order-detail";
-  detail.textContent = `Complementos: ${order.toppings.join(", ") || "nenhum"} Â· Caldas: ${order.sauces.join(", ") || "nenhuma"}`;
+  detail.textContent = `Complementos: ${order.toppings.join(", ") || "nenhum"} · Caldas: ${order.sauces.join(", ") || "nenhuma"}`;
   card.append(top, productTag, detail);
   if (order.note) { const note = document.createElement("p"); note.className = "order-note"; note.textContent = `Obs.: ${order.note}`; card.append(note); }
   if (!order.done) {
-    const done = document.createElement("button"); done.className = "status-button"; done.type = "button"; done.textContent = "âœ“ Marcar como realizado";
+    const done = document.createElement("button"); done.className = "status-button"; done.type = "button"; done.textContent = "✓ Marcar como realizado";
     done.addEventListener("click", () => { orders = orders.map((item) => item.id === order.id ? { ...item, done: true } : item); persist(STORAGE_KEY, orders); renderOrders(); });
     card.append(done);
   } else {
-    const undo = document.createElement("button"); undo.className = "status-button"; undo.type = "button"; undo.textContent = "â†¶ Reabrir pedido";
+    const undo = document.createElement("button"); undo.className = "status-button"; undo.type = "button"; undo.textContent = "↶ Reabrir pedido";
     undo.addEventListener("click", () => { orders = orders.map((item) => item.id === order.id ? { ...item, done: false } : item); persist(STORAGE_KEY, orders); renderOrders(); });
     card.append(undo);
   }
