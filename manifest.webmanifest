@@ -1,0 +1,12 @@
+{
+  "name": "Theny AÃ§aÃ­ | Pedidos",
+  "short_name": "Theny AÃ§aÃ­",
+  "description": "Monte e acompanhe pedidos da Theny AÃ§aÃ­.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#faf8fb",
+  "theme_color": "#51276c",
+  "icons": [{ "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}
+
