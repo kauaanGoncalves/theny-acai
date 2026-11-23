@@ -6,10 +6,11 @@
   <link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@1,800;1,900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css"><script src="app.js?v=4" defer></script>
+  <link rel="stylesheet" href="style.css"><script>window.addEventListener("error",function(event){var box=document.getElementById("boot-error");if(box){box.hidden=false;box.textContent="Não foi possível abrir o catálogo: "+(event.message||"erro ao carregar arquivos")+". Atualize a página."}});</script><script src="app.js?v=5" defer></script>
 </head>
 <body>
   <main class="page">
+    <div id="boot-error" class="boot-error" hidden></div>
     <header class="hero">
       <div class="topline"><a class="brand" href="#top">Theny<span>✳</span></a><div class="header-actions"><a class="vendor-link" href="#painel">Painel da vendedora <span>↗</span></a><span class="open-badge"><i></i> Monte seu pedido</span></div></div>
       <div class="hero-copy"><p class="eyebrow">AÇAÍ FEITO COM CARINHO</p><h1>Seu momento<br><em>mais gostoso.</em></h1><p>Escolha seu copinho e monte do seu jeito.</p></div>
