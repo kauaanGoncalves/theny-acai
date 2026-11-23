@@ -1,4 +1,4 @@
-const CACHE = "theny-acai-static-v6";
+const CACHE = "theny-acai-static-v7";
 const ASSETS = ["./", "./index.html", "./style.css", "./app.js", "./manifest.webmanifest", "./icon.svg"];
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)));
