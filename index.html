@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#4c236d"><meta name="description" content="Monte seu pedido de aÃ§aÃ­ e copinho Theny." /><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="default"><title>Theny AÃ§aÃ­ | Monte seu pedido</title>
+  <link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@1,800;1,900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css"><script src="app.js" defer></script>
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <div class="topline"><a class="brand" href="#top">Theny<span>âœ³</span></a><div class="header-actions"><a class="vendor-link" href="#painel">Painel da vendedora <span>â†—</span></a><span class="open-badge"><i></i> Monte seu pedido</span></div></div>
+      <div class="hero-copy"><p class="eyebrow">AÃ‡AÃ FEITO COM CARINHO</p><h1>Seu momento<br><em>mais gostoso.</em></h1><p>Escolha seu copinho e monte do seu jeito.</p></div>
+      <div class="berry berry-one">â—</div><div class="berry berry-two">â—</div>
+    </header>
+
+    <section class="content" id="top">
+      <form id="order-form" class="order-card">
+        <div class="section-heading"><span class="step">01</span><div><p class="eyebrow">VAMOS COMEÃ‡AR</p><h2>Quem vai aproveitar?</h2></div></div>
+        <label class="field-label" for="customer-name">Seu nome</label><input class="text-input" id="customer-name" maxlength="50" placeholder="Como podemos te chamar?" required>
+
+        <div class="section-heading product-heading"><span class="step">02</span><div><p class="eyebrow">ESCOLHA SEU PEDIDO</p><h2>O que vai ser hoje?</h2></div></div>
+        <div class="product-grid" id="product-options"></div>
+
+        <div class="flavor-panel" id="flavor-panel" hidden><p class="group-title">Sabor do copinho <span>escolha 1</span></p><div class="choice-row"><label class="choice"><input type="radio" name="flavor" value="AÃ§aÃ­" checked><span class="checkmark"></span>AÃ§aÃ­</label><label class="choice"><input type="radio" name="flavor" value="Creme"><span class="checkmark"></span>Creme</label></div></div>
+
+        <div class="build-grid">
+          <section class="choice-panel"><div class="panel-title"><span class="panel-icon">ï¼‹</span><div><h3>Complementos</h3><p id="topping-counter">Escolha atÃ© 3</p></div></div><div id="topping-options" class="option-list"></div></section>
+          <section class="choice-panel"><div class="panel-title"><span class="panel-icon drizzle">ã€°</span><div><h3>Caldas</h3><p id="sauce-counter">Escolha atÃ© 2</p></div></div><div id="sauce-options" class="option-list"></div></section>
+        </div>
+
+        <label class="field-label note-label" for="order-note">ObservaÃ§Ã£o <span>(opcional)</span></label><textarea class="text-input note-input" id="order-note" maxlength="180" placeholder="Algum detalhe especial?" rows="2"></textarea>
+        <button class="submit-button" type="submit">Anotar pedido <span>â†’</span></button>
+        <p class="privacy-note">Seu pedido fica salvo neste aparelho para a vencedora consultar.</p>
+      </form>
+
+    </section>
+    <section class="vendor-view" id="vendor-view" hidden>
+      <div class="vendor-title"><a class="back-link" href="#top">â† Voltar ao catÃ¡logo</a><p class="eyebrow">ÃREA DE ORGANIZAÃ‡ÃƒO</p><h2>Painel da vendedora</h2><p>Controle o que estÃ¡ disponÃ­vel e acompanhe os pedidos deste aparelho.</p></div>
+      <section class="vendor-stock"><div class="orders-heading"><div><p class="eyebrow">DISPONIBILIDADE</p><h2>Estoque e opÃ§Ãµes</h2></div><span class="stock-hint">Toque para riscar ou liberar</span></div><p class="stock-help">Itens riscados somem da escolha do cliente. Cadastre opÃ§Ãµes novas quando quiser.</p>
+        <div class="stock-grid"><div><h3>Complementos</h3><form class="add-option-form" data-kind="topping"><input maxlength="36" placeholder="Novo complemento" aria-label="Novo complemento" required><button aria-label="Adicionar complemento">+</button></form><div id="topping-stock" class="stock-options"></div></div><div><h3>Caldas</h3><form class="add-option-form" data-kind="sauce"><input maxlength="36" placeholder="Nova calda" aria-label="Nova calda" required><button aria-label="Adicionar calda">+</button></form><div id="sauce-stock" class="stock-options"></div></div></div>
+        <div class="product-admin"><h3>Potes e produtos</h3><form class="add-product-form" id="add-product-form"><input id="new-product-name" maxlength="30" placeholder="Nome do produto ou pote" aria-label="Nome do produto ou pote" required><select id="new-product-icon" aria-label="Ãcone do produto"><option value="ðŸ§">ðŸ§ Pote</option><option value="ðŸ¥£">ðŸ¥£ Copo</option><option value="ðŸ‡">ðŸ‡ AÃ§aÃ­</option></select><button type="submit">Adicionar produto</button></form><div id="product-stock" class="stock-options product-stock"></div></div>
+      </section>
+      <section class="orders-card"><div class="orders-heading"><div><p class="eyebrow">PEDIDOS</p><h2>Pedidos anotados <span id="order-count">0</span></h2></div><button class="clear-orders" id="clear-orders" type="button" hidden>Limpar realizados</button></div><div class="orders-list" id="orders-list"></div><div class="orders-empty" id="orders-empty"><span>ðŸ§¾</span><p>Nenhum pedido ainda</p><small>Os pedidos enviados aparecem aqui.</small></div></section>
+    </section>
+    <footer class="footer">Theny AÃ§aÃ­ <span>Â·</span> feito com carinho, do seu jeito</footer>
+  </main>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
+
