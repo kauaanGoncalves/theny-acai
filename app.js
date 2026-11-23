@@ -19,7 +19,7 @@ let toastTimer;
 
 function load(key, fallback) { try { const value = JSON.parse(localStorage.getItem(key) || "null"); return Array.isArray(value) ? value : fallback; } catch { return fallback; } }
 function persist(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { notify("Não foi possível salvar neste navegador."); } }
-function product() { return form.elements.product.value; }
+function product() { return form.elements.product?.value || products[0]?.id || "potinho"; }
 function selected(group) { return [...form.querySelectorAll(`[name="${group}"]:checked`)].map((input) => input.value); }
 function isUnavailable(item) { return unavailable.includes(item); }
 
