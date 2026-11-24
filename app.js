@@ -6,9 +6,10 @@ const TOPPINGS_KEY = "theny-acai-toppings-v1";
 const SAUCES_KEY = "theny-acai-sauces-v1";
 const PRODUCTS_KEY = "theny-acai-products-v1";
 const PIX_KEY_STORAGE = "theny-acai-pix-key-v1";
+const TOPPING_PRICES_KEY = "theny-acai-topping-prices-v1";
 const DEFAULT_TOPPINGS = ["Leite em Pó", "Confete", "Chocobol", "Granulado", "Jujuba", "Granola", "Paçoca"];
 const DEFAULT_SAUCES = ["Morango", "Chocolate", "Leite Condensado"];
-const DEFAULT_PRODUCTS = [{ id: "potinho", name: "Potinho", icon: "🫙", toppingLimit: 3, sauceLimit: 2 }, { id: "copinho", name: "Copinho", icon: "🥤", toppingLimit: 1, sauceLimit: 1 }];
+const DEFAULT_PRODUCTS = [{ id: "potinho", name: "Potinho", icon: "🫙", price: 10, toppingLimit: 3, sauceLimit: 2 }, { id: "copinho", name: "Copinho", icon: "🥤", price: 5, toppingLimit: 1, sauceLimit: 1 }];
 const form = document.querySelector("#order-form");
 const ordersRoot = document.querySelector("#orders-list");
 const toast = document.querySelector("#toast");
@@ -16,7 +17,8 @@ let orders = load(STORAGE_KEY, []);
 let unavailable = load(STOCK_KEY, []);
 let toppings = load(TOPPINGS_KEY, DEFAULT_TOPPINGS);
 let sauces = load(SAUCES_KEY, DEFAULT_SAUCES);
-let products = load(PRODUCTS_KEY, DEFAULT_PRODUCTS).map((item) => ({ ...item, icon: item.id === "potinho" ? "🫙" : item.id === "copinho" ? "🥤" : item.icon, flavors: undefined }));
+let toppingPrices = (() => { try { return JSON.parse(localStorage.getItem(TOPPING_PRICES_KEY) || "{}"); } catch { return {}; } })();
+let products = load(PRODUCTS_KEY, DEFAULT_PRODUCTS).map((item) => ({ ...item, price: Number.isFinite(Number(item.price)) ? Number(item.price) : item.id === "copinho" ? 5 : item.id === "potinho" ? 10 : 0, icon: item.id === "potinho" ? "🫙" : item.id === "copinho" ? "🥤" : item.icon, flavors: undefined }));
 let pixKey = localStorage.getItem(PIX_KEY_STORAGE) || "13997891003";
 persist(PRODUCTS_KEY, products);
 let toastTimer;
@@ -26,11 +28,16 @@ function persist(key, value) { try { localStorage.setItem(key, JSON.stringify(va
 function product() { return form.elements.product?.value || products[0]?.id || "potinho"; }
 function selected(group) { return [...form.querySelectorAll(`[name="${group}"]:checked`)].map((input) => input.value); }
 function isUnavailable(item) { return unavailable.includes(item); }
+function formatMoney(value) { return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value) || 0); }
+function orderTotal(order) { const productPrice = Number(order.basePrice ?? products.find((item) => item.id === order.product)?.price ?? (order.product === "copinho" ? 5 : order.product === "potinho" ? 10 : 0)); return Number(order.total ?? (productPrice + (order.toppings || []).reduce((sum, item) => sum + (Number(item.price) || Number(toppingPrices[typeof item === "string" ? item : item.name]) || 0), 0))); }
+function localDateKey(date = new Date()) { const d = new Date(date); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
 
 function makeOptions(root, values, name) {
   root.replaceChildren(...values.map((value) => {
     const label = document.createElement("label"); label.className = "option-row";
-    const text = document.createElement("span"); text.textContent = value;
+    const text = document.createElement("span");
+    const extra = name === "topping" ? Number(toppingPrices[value]) || 0 : 0;
+    text.textContent = extra > 0 ? `${value} · +${formatMoney(extra)}` : value;
     const input = document.createElement("input"); input.type = "checkbox"; input.name = name; input.value = value;
     const check = document.createElement("span"); check.className = "checkmark";
     label.append(text, input, check);
@@ -73,7 +80,7 @@ function renderProducts() {
     const radio = document.createElement("input"); radio.type = "radio"; radio.name = "product"; radio.value = item.id; radio.checked = item.id === activeId;
     const icon = document.createElement("span"); icon.className = "product-emoji"; icon.textContent = item.icon || "🍧";
     const title = document.createElement("span"); title.className = "product-title"; title.textContent = item.name;
-    const detail = document.createElement("span"); detail.className = "product-limit"; detail.textContent = `${item.toppingLimit} complemento(s) · ${item.sauceLimit} calda(s)`;
+    const detail = document.createElement("span"); detail.className = "product-limit"; detail.textContent = `${formatMoney(item.price)} · ${item.toppingLimit} complemento(s) · ${item.sauceLimit} calda(s)`;
     const mark = document.createElement("span"); mark.className = "radio-mark";
     label.append(radio, icon, title, detail, mark); return label;
   }));
@@ -99,9 +106,15 @@ function renderStock() {
       const wrap = document.createElement("span"); wrap.className = "stock-item-wrap";
       const button = document.createElement("button"); button.type = "button";
       button.className = "stock-chip" + (isUnavailable(item) ? " unavailable" : "");
-      button.textContent = item; button.setAttribute("aria-pressed", String(isUnavailable(item)));
+      button.textContent = item + (Number(toppingPrices[item]) > 0 ? ` · +${formatMoney(toppingPrices[item])}` : ""); button.setAttribute("aria-pressed", String(isUnavailable(item)));
       button.setAttribute("aria-label", item + ": " + (isUnavailable(item) ? "indisponível, toque para liberar" : "disponível, toque para riscar"));
       button.addEventListener("click", () => toggleUnavailable(item)); wrap.append(button);
+      if (selector === "#topping-stock") {
+        const priceForm = document.createElement("form"); priceForm.className = "stock-price-form";
+        const priceInput = document.createElement("input"); priceInput.type = "number"; priceInput.min = "0"; priceInput.step = "0.50"; priceInput.value = String(Number(toppingPrices[item]) || 0); priceInput.setAttribute("aria-label", `Preço adicional de ${item}`);
+        const priceSave = document.createElement("button"); priceSave.type = "submit"; priceSave.textContent = "R$"; priceSave.setAttribute("aria-label", `Salvar preço de ${item}`);
+        priceForm.append(priceInput, priceSave); priceForm.addEventListener("submit", (event) => { event.preventDefault(); toppingPrices[item] = Math.max(0, Number(priceInput.value) || 0); persist(TOPPING_PRICES_KEY, toppingPrices); renderStock(); makeOptions(document.querySelector("#topping-options"), toppings, "topping"); updateOrderPrice(); notify("Preço do complemento atualizado."); }); wrap.append(priceForm);
+      }
       if (!(selector === "#topping-stock" ? DEFAULT_TOPPINGS : DEFAULT_SAUCES).includes(item)) {
         const remove = document.createElement("button"); remove.type = "button"; remove.className = "delete-option"; remove.textContent = "×";
         remove.setAttribute("aria-label", "Excluir " + item); remove.addEventListener("click", () => deleteOption(selector === "#topping-stock" ? "topping" : "sauce", item)); wrap.append(remove);
@@ -122,10 +135,10 @@ function renderStock() {
   renderPix();
 }
 
-function addOption(kind, value) {
+function addOption(kind, value, price = 0) {
   const list = kind === "topping" ? toppings : sauces;
   if (list.some((entry) => entry.toLocaleLowerCase("pt-BR") === value.toLocaleLowerCase("pt-BR"))) { notify("Essa opção já existe."); return; }
-  if (kind === "topping") { toppings = [...toppings, value]; persist(TOPPINGS_KEY, toppings); }
+  if (kind === "topping") { toppings = [...toppings, value]; toppingPrices[value] = Math.max(0, Number(price) || 0); persist(TOPPINGS_KEY, toppings); persist(TOPPING_PRICES_KEY, toppingPrices); }
   else { sauces = [...sauces, value]; persist(SAUCES_KEY, sauces); }
   renderStock(); makeOptions(document.querySelector(kind === "topping" ? "#topping-options" : "#sauce-options"), listFor(kind), kind);
   enforceLimit(kind); notify("Opção adicionada!");
@@ -176,10 +189,10 @@ function deleteProduct(id) {
   products = products.filter((item) => item.id !== id); persist(PRODUCTS_KEY, products);
   renderProducts(); updateProduct(); renderStock();
 }
-function addProduct(name, icon) {
+function addProduct(name, icon, price = 0) {
   if (products.some((item) => item.name.toLocaleLowerCase("pt-BR") === name.toLocaleLowerCase("pt-BR"))) { notify("Esse produto já existe."); return; }
   const id = `produto-${Date.now()}`;
-  products = [...products, { id, name, icon, toppingLimit: 3, sauceLimit: 2 }]; persist(PRODUCTS_KEY, products);
+  products = [...products, { id, name, icon, price: Math.max(0, Number(price) || 0), toppingLimit: 3, sauceLimit: 2 }]; persist(PRODUCTS_KEY, products);
   renderProducts(); form.elements.product.value = id; updateProduct(); renderStock(); notify("Produto cadastrado!");
 }
 
@@ -202,17 +215,20 @@ function makeOrderCard(order) {
   const productTag = document.createElement("span"); productTag.className = "order-product";
   productTag.textContent = `${order.productIcon || "🍧"} ${order.productName || order.product}`;
   const detail = document.createElement("p"); detail.className = "order-detail";
-  detail.textContent = `Complementos: ${order.toppings.join(", ") || "nenhum"} · Caldas: ${order.sauces.join(", ") || "nenhuma"}`;
-  card.append(top, productTag, detail);
+  const toppingNames = (order.toppings || []).map((item) => typeof item === "string" ? item : item.name);
+  detail.textContent = `Complementos: ${toppingNames.join(", ") || "nenhum"} · Caldas: ${(order.sauces || []).join(", ") || "nenhuma"}`;
+  const price = document.createElement("p"); price.className = "order-total-detail"; price.textContent = `Total: ${formatMoney(orderTotal(order))}`;
+  card.append(top, productTag, detail, price);
+  if (order.done) { const served = document.createElement("p"); served.className = "order-served"; served.textContent = `Atendido por ${order.servedBy || "vendedora"}${order.doneAt ? " · " + new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(order.doneAt)) : ""}`; card.append(served); }
   if (order.note) { const note = document.createElement("p"); note.className = "order-note"; note.textContent = `Obs.: ${order.note}`; card.append(note); }
   if (currentRole !== "orders_viewer") {
     if (!order.done) {
       const done = document.createElement("button"); done.className = "status-button"; done.type = "button"; done.textContent = "✓ Marcar como realizado";
-      done.addEventListener("click", () => { orders = orders.map((item) => item.id === order.id ? { ...item, done: true } : item); persist(STORAGE_KEY, orders); renderOrders(); });
+      done.addEventListener("click", () => { orders = orders.map((item) => item.id === order.id ? { ...item, done: true, doneAt: new Date().toISOString(), servedBy: currentSellerName || authUser?.email || "vendedora" } : item); persist(STORAGE_KEY, orders); renderOrders(); });
       card.append(done);
     } else {
       const undo = document.createElement("button"); undo.className = "status-button"; undo.type = "button"; undo.textContent = "↶ Reabrir pedido";
-      undo.addEventListener("click", () => { orders = orders.map((item) => item.id === order.id ? { ...item, done: false } : item); persist(STORAGE_KEY, orders); renderOrders(); });
+      undo.addEventListener("click", () => { orders = orders.map((item) => { if (item.id !== order.id) return item; const reopened = { ...item, done: false }; delete reopened.doneAt; delete reopened.servedBy; return reopened; }); persist(STORAGE_KEY, orders); renderOrders(); });
       card.append(undo);
     }
   }
@@ -220,16 +236,33 @@ function makeOrderCard(order) {
 }
 
 function renderOrders() {
-  ordersRoot.replaceChildren(...orders.map(makeOrderCard));
-  document.querySelector("#order-count").textContent = String(orders.length);
-  document.querySelector("#orders-empty").hidden = orders.length > 0;
-  document.querySelector("#clear-orders").hidden = currentRole === "orders_viewer" || !orders.some((order) => order.done);
+  const activeOrders = orders.filter((order) => !order.done);
+  ordersRoot.replaceChildren(...activeOrders.map(makeOrderCard));
+  document.querySelector("#order-count").textContent = String(activeOrders.length);
+  document.querySelector("#orders-empty").hidden = activeOrders.length > 0;
+  renderHistory();
+}
+function renderHistory() {
+  const dateInput = document.querySelector("#history-date");
+  if (!dateInput.value) dateInput.value = localDateKey();
+  const completed = orders.filter((order) => order.done && localDateKey(order.doneAt || order.createdAt) === dateInput.value);
+  const historyRoot = document.querySelector("#history-list");
+  historyRoot.replaceChildren(...completed.map(makeOrderCard));
+  document.querySelector("#history-order-count").textContent = String(completed.length);
+  document.querySelector("#history-customer-count").textContent = String(new Set(completed.map((order) => order.name.trim().toLocaleLowerCase("pt-BR"))).size);
+  document.querySelector("#history-empty").hidden = completed.length > 0;
+}
+function updateOrderPrice() {
+  const chosenProduct = products.find((item) => item.id === product());
+  const extra = selected("topping").reduce((sum, name) => sum + (Number(toppingPrices[name]) || 0), 0);
+  document.querySelector("#order-total").textContent = formatMoney((Number(chosenProduct?.price) || 0) + extra);
 }
 
 let authUser = null;
 let sellerApproved = false;
 let sellerIsOwner = false;
 let currentRole = null;
+let currentSellerName = "";
 let signupMode = false;
 let accessCheckId = 0;
 
@@ -254,7 +287,7 @@ async function refreshSellerAccess() {
   const { data: { session } } = await supabase.auth.getSession();
   if (checkId !== accessCheckId) return;
   authUser = session?.user || null;
-  sellerApproved = false; sellerIsOwner = false; currentRole = null;
+  sellerApproved = false; sellerIsOwner = false; currentRole = null; currentSellerName = "";
   if (!authUser) {
     setAuthView();
     showAuthStatus("Entre com uma conta aprovada ou solicite seu cadastro.");
@@ -290,7 +323,7 @@ async function refreshSellerAccess() {
     showAuthStatus("Cadastro recebido. A responsável precisa aprovar seu acesso.");
     return;
   }
-  sellerApproved = true; sellerIsOwner = data.role === "owner"; currentRole = data.role;
+  sellerApproved = true; sellerIsOwner = data.role === "owner"; currentRole = data.role; currentSellerName = data.full_name?.trim() || authUser.email || "";
   setAuthView({ signedIn: true, approved: true, owner: sellerIsOwner, role: currentRole });
   showAuthStatus(sellerIsOwner ? "Conta administradora conectada." : currentRole === "orders_viewer" ? "Acesso somente para visualizar pedidos." : "Conta aprovada.");
   renderStock(); renderOrders();
@@ -398,13 +431,22 @@ document.querySelector("#seller-name-form").addEventListener("submit", async (ev
   document.querySelector("#seller-name-form").hidden = true;
   notify("Nome salvo."); await refreshSellerAccess();
 });
-document.querySelector("#seller-forgot-password").addEventListener("click", async () => {
-  const email = document.querySelector("#seller-email").value.trim();
-  if (!email) { showAuthStatus("Digite seu e-mail para receber o link de redefinição.", true); document.querySelector("#seller-email").focus(); return; }
+async function requestPasswordReset(email) {
+  if (!email) { showAuthStatus("Digite o e-mail para receber o link de redefinição.", true); return; }
   showAuthStatus("Enviando link de redefinição…");
   const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: "https://kauaangoncalves.github.io/theny-acai/" });
-  if (error) { showAuthStatus("Não foi possível enviar o e-mail. Confira a configuração de redirecionamento do Supabase.", true); return; }
-  showAuthStatus("Se houver uma conta para esse e-mail, enviaremos um link para redefinir a senha.");
+  if (error) {
+    const message = /redirect|url/i.test(error.message || "")
+      ? "O Supabase bloqueou o endereço. Em Authentication → URL Configuration, defina Site URL como https://kauaangoncalves.github.io/theny-acai/ e adicione https://kauaangoncalves.github.io/theny-acai/** em Redirect URLs."
+      : "Não foi possível enviar agora. Confira o e-mail e tente novamente em alguns minutos.";
+    showAuthStatus(message, true); return;
+  }
+  showAuthStatus("Se houver uma conta para esse e-mail, enviaremos um link. Use o e-mail mais recente; cada link só pode ser usado uma vez.");
+}
+document.querySelector("#seller-forgot-password").addEventListener("click", () => requestPasswordReset(document.querySelector("#seller-email").value.trim()));
+document.querySelector("#seller-recovery-email").value = document.querySelector("#seller-email").value.trim();
+document.querySelector("#seller-retry-recovery").addEventListener("submit", (event) => {
+  event.preventDefault(); requestPasswordReset(document.querySelector("#seller-recovery-email").value.trim());
 });
 document.querySelector("#seller-reset-form").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -412,8 +454,9 @@ document.querySelector("#seller-reset-form").addEventListener("submit", async (e
   const confirmation = document.querySelector("#seller-new-password-confirm").value;
   if (password.length < 6 || password !== confirmation) { showAuthStatus("As senhas precisam ter pelo menos 6 caracteres e ser iguais.", true); return; }
   const { error } = await supabase.auth.updateUser({ password });
-  if (error) { showAuthStatus("Não foi possível atualizar a senha. Solicite um novo link.", true); return; }
+  if (error) { document.querySelector("#seller-retry-recovery").hidden = false; showAuthStatus("Este link pode ter expirado ou já ter sido usado. Solicite outro link abaixo.", true); return; }
   document.querySelector("#seller-reset-form").hidden = true;
+  document.querySelector("#seller-retry-recovery").hidden = true;
   document.querySelector("#seller-login-form").hidden = true;
   showAuthStatus("Senha atualizada. Você já pode acessar o painel.");
   await refreshSellerAccess();
@@ -466,6 +509,8 @@ supabase.auth.onAuthStateChange((event) => {
       if (location.hash !== "#painel") location.hash = "#painel";
       document.querySelector("#seller-login-form").hidden = true;
       document.querySelector("#seller-reset-form").hidden = false;
+      document.querySelector("#seller-recovery-email").value = document.querySelector("#seller-email").value.trim();
+      document.querySelector("#seller-retry-recovery").hidden = false;
       document.querySelector("#seller-resend").hidden = true;
       showAuthStatus("Digite e confirme sua nova senha.");
     }, 0);
@@ -486,15 +531,19 @@ function renderRoute() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-form.addEventListener("change", (event) => { if (event.target.name === "product") updateProduct(); });
+form.addEventListener("change", (event) => { if (event.target.name === "product") updateProduct(); updateOrderPrice(); });
+document.querySelector("#history-date").addEventListener("change", renderHistory);
 form.addEventListener("submit", (event) => {
   event.preventDefault(); if (!form.reportValidity()) return;
   const name = document.querySelector("#customer-name").value.trim();
   if (!name) { document.querySelector("#customer-name").focus(); return; }
   const chosenProduct = products.find((item) => item.id === product());
+  const selectedToppings = selected("topping").map((item) => ({ name: item, price: Number(toppingPrices[item]) || 0 }));
+  const basePrice = Number(chosenProduct.price) || 0;
+  const total = basePrice + selectedToppings.reduce((sum, item) => sum + item.price, 0);
   orders.unshift({ id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`, name,
-    product: chosenProduct.id, productName: chosenProduct.name, productIcon: chosenProduct.icon,
-    toppings: selected("topping"), sauces: selected("sauce"), note: document.querySelector("#order-note").value.trim(), createdAt: new Date().toISOString(), done: false });
+    product: chosenProduct.id, productName: chosenProduct.name, productIcon: chosenProduct.icon, basePrice, total,
+    toppings: selectedToppings, sauces: selected("sauce"), note: document.querySelector("#order-note").value.trim(), createdAt: new Date().toISOString(), done: false });
   persist(STORAGE_KEY, orders); renderOrders(); form.reset(); form.elements.product.value = "potinho"; updateProduct();
   document.querySelector("#customer-name").focus(); notify("Pedido anotado com sucesso!");
 });
@@ -503,17 +552,18 @@ document.querySelector("#clear-orders").addEventListener("click", () => {
   orders = orders.filter((order) => !order.done); persist(STORAGE_KEY, orders); renderOrders();
 });
 document.querySelectorAll(".add-option-form").forEach((addForm) => addForm.addEventListener("submit", (event) => {
-  event.preventDefault(); const input = addForm.querySelector("input"); const value = input.value.trim();
-  if (value) { addOption(addForm.dataset.kind, value); addForm.reset(); }
+  event.preventDefault(); const input = addForm.querySelector(".option-name-input") || addForm.querySelector("input"); const value = input.value.trim();
+  const price = Number(addForm.querySelector(".option-price-input")?.value) || 0;
+  if (value) { addOption(addForm.dataset.kind, value, price); addForm.reset(); const priceInput = addForm.querySelector(".option-price-input"); if (priceInput) priceInput.value = "0"; }
 }));
 document.querySelector("#add-product-form").addEventListener("submit", (event) => {
   event.preventDefault(); const name = document.querySelector("#new-product-name").value.trim();
-  if (name) { addProduct(name, document.querySelector("#new-product-icon").value); event.currentTarget.reset(); }
+  if (name) { addProduct(name, document.querySelector("#new-product-icon").value, document.querySelector("#new-product-price").value); event.currentTarget.reset(); }
 });
 window.addEventListener("hashchange", renderRoute);
 renderProducts();
 makeOptions(document.querySelector("#topping-options"), toppings, "topping");
 makeOptions(document.querySelector("#sauce-options"), sauces, "sauce");
-updateProduct(); renderStock(); renderOrders(); renderRoute();
+updateProduct(); updateOrderPrice(); renderStock(); renderOrders(); renderRoute();
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("./sw.js").catch(() => {});
 
