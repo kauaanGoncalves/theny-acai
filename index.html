@@ -6,7 +6,7 @@
   <link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@1,800;1,900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css"><script>window.addEventListener("error",function(event){var box=document.getElementById("boot-error");if(box){box.hidden=false;box.textContent="Não foi possível abrir o catálogo: "+(event.message||"erro ao carregar arquivos")+". Atualize a página."}});</script><script src="app.js?v=5" defer></script>
+  <link rel="stylesheet" href="style.css"><script>window.addEventListener("error",function(event){var box=document.getElementById("boot-error");if(box){box.hidden=false;box.textContent="Não foi possível abrir o catálogo: "+(event.message||"erro ao carregar arquivos")+". Atualize a página."}});</script><script type="module" src="app.js?v=6"></script>
 </head>
 <body>
   <main class="page">
@@ -39,12 +39,27 @@
 
     </section>
     <section class="vendor-view" id="vendor-view" hidden>
-      <div class="vendor-title"><a class="back-link" href="#top">← Voltar ao catálogo</a><p class="eyebrow">ÁREA DE ORGANIZAÇÃO</p><h2>Painel da vendedora</h2><p>Controle o que está disponível e acompanhe os pedidos deste aparelho.</p></div>
+      <section class="seller-auth" id="seller-auth">
+        <a class="back-link" href="#top">← Voltar ao catálogo</a>
+        <p class="eyebrow">ACESSO RESTRITO</p><h2>Painel da vendedora</h2>
+        <p class="auth-copy">Entre com uma conta aprovada. Novos cadastros aguardam aprovação da responsável.</p>
+        <form id="seller-login-form" class="seller-login-form">
+          <label for="seller-email">E-mail</label><input id="seller-email" type="email" autocomplete="username" required>
+          <label for="seller-password">Senha</label><input id="seller-password" type="password" autocomplete="current-password" minlength="6" required>
+          <div class="auth-actions"><button type="submit">Entrar</button><button id="seller-signup" type="button">Solicitar cadastro</button></div>
+        </form>
+        <p id="seller-auth-status" class="seller-auth-status" role="status" aria-live="polite"></p>
+        <button id="seller-logout" class="seller-logout" type="button" hidden>Sair da conta</button>
+      </section>
+      <div id="seller-content" hidden>
+      <div class="vendor-title"><a class="back-link" href="#top">← Voltar ao catálogo</a><button id="seller-logout-panel" class="seller-logout-panel" type="button">Sair</button><p class="eyebrow">ÁREA DE ORGANIZAÇÃO</p><h2>Painel da vendedora</h2><p>Controle o que está disponível e acompanhe os pedidos deste aparelho.</p></div>
+      <section class="seller-approvals" id="seller-approvals" hidden><div class="orders-heading"><div><p class="eyebrow">ACESSO</p><h2>Cadastros pendentes</h2></div></div><div id="seller-approval-list" class="seller-approval-list"></div></section>
       <section class="vendor-stock"><div class="orders-heading"><div><p class="eyebrow">DISPONIBILIDADE</p><h2>Estoque e opções</h2></div><span class="stock-hint">Toque para riscar ou liberar</span></div><p class="stock-help">Itens riscados somem da escolha do cliente. Cadastre opções novas quando quiser.</p>
         <div class="stock-grid"><div><h3>Complementos</h3><form class="add-option-form" data-kind="topping"><input maxlength="36" placeholder="Novo complemento" aria-label="Novo complemento" required><button aria-label="Adicionar complemento">+</button></form><div id="topping-stock" class="stock-options"></div></div><div><h3>Caldas</h3><form class="add-option-form" data-kind="sauce"><input maxlength="36" placeholder="Nova calda" aria-label="Nova calda" required><button aria-label="Adicionar calda">+</button></form><div id="sauce-stock" class="stock-options"></div></div></div>
         <div class="product-admin"><h3>Potes e produtos</h3><form class="add-product-form" id="add-product-form"><input id="new-product-name" maxlength="30" placeholder="Nome do produto ou pote" aria-label="Nome do produto ou pote" required><select id="new-product-icon" aria-label="Ícone do produto"><option value="🍧">🍧 Pote</option><option value="🥣">🥣 Copo</option><option value="🍇">🍇 Açaí</option></select><button type="submit">Adicionar produto</button></form><div id="product-stock" class="stock-options product-stock"></div></div>
       </section>
       <section class="orders-card"><div class="orders-heading"><div><p class="eyebrow">PEDIDOS</p><h2>Pedidos anotados <span id="order-count">0</span></h2></div><button class="clear-orders" id="clear-orders" type="button" hidden>Limpar realizados</button></div><div class="orders-list" id="orders-list"></div><div class="orders-empty" id="orders-empty"><span>🧾</span><p>Nenhum pedido ainda</p><small>Os pedidos enviados aparecem aqui.</small></div></section>
+      </div>
     </section>
     <footer class="footer">Theny Açaí <span>·</span> feito com carinho, do seu jeito</footer>
   </main>
