@@ -9,9 +9,11 @@ const SAUCES_KEY = "theny-acai-sauces-v1";
 const PRODUCTS_KEY = "theny-acai-products-v1";
 const PIX_KEY_STORAGE = "theny-acai-pix-key-v1";
 const TOPPING_PRICES_KEY = "theny-acai-topping-prices-v1";
+const TOPPING_ADDONS_KEY = "theny-acai-topping-addons-v1";
+const SAUCE_ADDONS_KEY = "theny-acai-sauce-addons-v1";
 const DEFAULT_TOPPINGS = ["Leite em Pó", "Confete", "Chocobol", "Granulado", "Jujuba", "Granola", "Paçoca"];
 const DEFAULT_SAUCES = ["Morango", "Chocolate", "Leite Condensado"];
-const DEFAULT_PRODUCTS = [{ id: "potinho", name: "Potinho", icon: "🫙", price: 10, toppingLimit: 3, sauceLimit: 2 }, { id: "copinho", name: "Copinho", icon: "🥤", price: 5, toppingLimit: 1, sauceLimit: 1 }];
+const DEFAULT_PRODUCTS = [{ id: "potinho", name: "Potinho", icon: "🫙", price: 10, toppingLimit: 3, sauceLimit: 1 }, { id: "copinho", name: "Copinho", icon: "🥤", price: 5, toppingLimit: 3, sauceLimit: 1 }];
 const form = document.querySelector("#order-form");
 const ordersRoot = document.querySelector("#orders-list");
 const toast = document.querySelector("#toast");
@@ -20,7 +22,9 @@ let unavailable = load(STOCK_KEY, []);
 let toppings = load(TOPPINGS_KEY, DEFAULT_TOPPINGS);
 let sauces = load(SAUCES_KEY, DEFAULT_SAUCES);
 let toppingPrices = (() => { try { return JSON.parse(localStorage.getItem(TOPPING_PRICES_KEY) || "{}"); } catch { return {}; } })();
-let products = load(PRODUCTS_KEY, DEFAULT_PRODUCTS).map((item) => ({ ...item, price: Number.isFinite(Number(item.price)) ? Number(item.price) : item.id === "copinho" ? 5 : item.id === "potinho" ? 10 : 0, icon: item.id === "potinho" ? "🫙" : item.id === "copinho" ? "🥤" : item.icon, flavors: undefined }));
+let toppingAddons = load(TOPPING_ADDONS_KEY, []).map(normalizeAddon).filter(Boolean);
+let sauceAddons = load(SAUCE_ADDONS_KEY, []).map(normalizeAddon).filter(Boolean);
+let products = load(PRODUCTS_KEY, DEFAULT_PRODUCTS).map((item) => { const oldDefault = (item.id === "potinho" && item.toppingLimit === 3 && item.sauceLimit === 2) || (item.id === "copinho" && item.toppingLimit === 1 && item.sauceLimit === 1); return { ...item, toppingLimit: oldDefault ? 3 : item.toppingLimit, sauceLimit: oldDefault ? 1 : item.sauceLimit, price: Number.isFinite(Number(item.price)) ? Number(item.price) : item.id === "copinho" ? 5 : item.id === "potinho" ? 10 : 0, icon: item.id === "potinho" ? "🫙" : item.id === "copinho" ? "🥤" : item.icon, flavors: undefined }; });
 let pixKey = localStorage.getItem(PIX_KEY_STORAGE) || "13997891003";
 let toastTimer;
 let ordersChannel = null;
@@ -32,26 +36,41 @@ let applyingRemoteSettings = false;
 let settingsSyncTimer = null;
 
 function load(key, fallback) { try { const value = JSON.parse(localStorage.getItem(key) || "null"); return Array.isArray(value) ? value : fallback; } catch { return fallback; } }
-function persist(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); if ([STOCK_KEY, TOPPINGS_KEY, SAUCES_KEY, PRODUCTS_KEY, TOPPING_PRICES_KEY].includes(key)) scheduleSettingsSync(); } catch { notify("Não foi possível salvar neste navegador."); } }
+function normalizeAddon(item) { if (typeof item === "string") return { name: item, price: 0 }; if (!item || typeof item.name !== "string") return null; return { name: item.name, price: Math.max(0, Number(item.price) || 0) }; }
+function persist(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); if ([STOCK_KEY, TOPPINGS_KEY, SAUCES_KEY, PRODUCTS_KEY, TOPPING_PRICES_KEY, TOPPING_ADDONS_KEY, SAUCE_ADDONS_KEY].includes(key)) scheduleSettingsSync(); } catch { notify("Não foi possível salvar neste navegador."); } }
 function product() { return form.elements.product?.value || products[0]?.id || "potinho"; }
 function selected(group) { return [...form.querySelectorAll(`[name="${group}"]:checked`)].map((input) => input.value); }
 function isUnavailable(item) { return unavailable.includes(item); }
 function formatMoney(value) { return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Number(value) || 0); }
-function orderTotal(order) { const productPrice = Number(order.basePrice ?? products.find((item) => item.id === order.product)?.price ?? (order.product === "copinho" ? 5 : order.product === "potinho" ? 10 : 0)); return Number(order.total ?? (productPrice + (order.toppings || []).reduce((sum, item) => sum + (Number(item.price) || Number(toppingPrices[typeof item === "string" ? item : item.name]) || 0), 0))); }
+function orderTotal(order) { const productPrice = Number(order.basePrice ?? products.find((item) => item.id === order.product)?.price ?? (order.product === "copinho" ? 5 : order.product === "potinho" ? 10 : 0)); const paid = [...(order.toppings || []), ...(order.sauces || [])].reduce((sum, item) => sum + (typeof item === "string" ? Number(toppingPrices[item]) || 0 : Number(item.price) || 0), 0); return Number(order.total ?? productPrice + paid); }
 function localDateKey(date = new Date()) { const d = new Date(date); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`; }
 
 function makeOptions(root, values, name) {
-  root.replaceChildren(...values.map((value) => {
+  root.replaceChildren(...values.filter((value) => !isUnavailable(value)).map((value) => {
     const label = document.createElement("label"); label.className = "option-row";
-    const text = document.createElement("span");
-    const extra = name === "topping" ? Number(toppingPrices[value]) || 0 : 0;
-    text.textContent = extra > 0 ? `${value} · +${formatMoney(extra)}` : value;
+    const text = document.createElement("span"); text.textContent = value;
     const input = document.createElement("input"); input.type = "checkbox"; input.name = name; input.value = value;
     const check = document.createElement("span"); check.className = "checkmark";
-    label.append(text, input, check);
-    input.addEventListener("change", () => enforceLimit(name));
+    label.append(text, input, check); input.addEventListener("change", () => enforceLimit(name));
     return label;
   }));
+}
+function makeAddonOptions(root, panel, values, name) {
+  const available = values.filter((item) => item.price > 0 && !isUnavailable(item.name)); panel.hidden = available.length === 0;
+  root.replaceChildren(...available.map((item) => {
+    const label = document.createElement("label"); label.className = "option-row paid-addon-row";
+    const text = document.createElement("span"); text.textContent = `${item.name} · +${formatMoney(item.price)}`;
+    const input = document.createElement("input"); input.type = "checkbox"; input.name = name; input.value = item.name;
+    const check = document.createElement("span"); check.className = "checkmark"; label.append(text, input, check); return label;
+  }));
+}
+function selectedAddons(group, list) { return selected(group).map((name) => list.find((item) => item.name === name)).filter(Boolean); }
+function migrateLegacyPaidToppings() {
+  const names = toppings.filter((name) => (Number(toppingPrices[name]) || 0) > 0 && !toppingAddons.some((item) => item.name === name));
+  if (!names.length) return false;
+  names.forEach((name) => { toppingAddons.push({ name, price: Number(toppingPrices[name]) || 0 }); delete toppingPrices[name]; });
+  toppings = toppings.filter((name) => !names.includes(name));
+  persist(TOPPINGS_KEY, toppings); persist(TOPPING_PRICES_KEY, toppingPrices); persist(TOPPING_ADDONS_KEY, toppingAddons); return true;
 }
 
 function enforceLimit(group) {
@@ -104,7 +123,9 @@ function notify(message) {
 function toggleUnavailable(item) {
   unavailable = isUnavailable(item) ? unavailable.filter((value) => value !== item) : [...unavailable, item];
   if (isUnavailable(item)) form.querySelectorAll(".option-row input").forEach((input) => { if (input.value === item) input.checked = false; });
-  persist(STOCK_KEY, unavailable); renderStock(); enforceLimit("topping"); enforceLimit("sauce");
+  persist(STOCK_KEY, unavailable); renderStock();
+  makeOptions(document.querySelector("#topping-options"), toppings, "topping"); makeOptions(document.querySelector("#sauce-options"), sauces, "sauce"); renderCustomerAddons();
+  enforceLimit("topping"); enforceLimit("sauce");
 }
 
 function renderStock() {
@@ -112,24 +133,18 @@ function renderStock() {
     const root = document.querySelector(selector);
     root.replaceChildren(...items.map((item) => {
       const wrap = document.createElement("span"); wrap.className = "stock-item-wrap";
-      const button = document.createElement("button"); button.type = "button";
-      button.className = "stock-chip" + (isUnavailable(item) ? " unavailable" : "");
-      button.textContent = item + (Number(toppingPrices[item]) > 0 ? ` · +${formatMoney(toppingPrices[item])}` : ""); button.setAttribute("aria-pressed", String(isUnavailable(item)));
+      const button = document.createElement("button"); button.type = "button"; button.className = "stock-chip" + (isUnavailable(item) ? " unavailable" : "");
+      button.textContent = item; button.setAttribute("aria-pressed", String(isUnavailable(item)));
       button.setAttribute("aria-label", item + ": " + (isUnavailable(item) ? "indisponível, toque para liberar" : "disponível, toque para riscar"));
       button.addEventListener("click", () => toggleUnavailable(item)); wrap.append(button);
-      if (selector === "#topping-stock") {
-        const priceForm = document.createElement("form"); priceForm.className = "stock-price-form";
-        const priceInput = document.createElement("input"); priceInput.type = "number"; priceInput.min = "0"; priceInput.step = "0.50"; priceInput.value = String(Number(toppingPrices[item]) || 0); priceInput.setAttribute("aria-label", `Preço adicional de ${item}`);
-        const priceSave = document.createElement("button"); priceSave.type = "submit"; priceSave.textContent = "R$"; priceSave.setAttribute("aria-label", `Salvar preço de ${item}`);
-        priceForm.append(priceInput, priceSave); priceForm.addEventListener("submit", (event) => { event.preventDefault(); toppingPrices[item] = Math.max(0, Number(priceInput.value) || 0); persist(TOPPING_PRICES_KEY, toppingPrices); renderStock(); makeOptions(document.querySelector("#topping-options"), toppings, "topping"); updateOrderPrice(); notify("Preço do complemento atualizado."); }); wrap.append(priceForm);
-      }
       if (!(selector === "#topping-stock" ? DEFAULT_TOPPINGS : DEFAULT_SAUCES).includes(item)) {
-        const remove = document.createElement("button"); remove.type = "button"; remove.className = "delete-option"; remove.textContent = "×";
-        remove.setAttribute("aria-label", "Excluir " + item); remove.addEventListener("click", () => deleteOption(selector === "#topping-stock" ? "topping" : "sauce", item)); wrap.append(remove);
+        const remove = document.createElement("button"); remove.type = "button"; remove.className = "delete-option"; remove.textContent = "×"; remove.setAttribute("aria-label", "Excluir " + item);
+        remove.addEventListener("click", () => deleteOption(selector === "#topping-stock" ? "topping" : "sauce", item)); wrap.append(remove);
       }
       return wrap;
     }));
   });
+  renderAddonStock("#topping-addon-stock", toppingAddons, "topping"); renderAddonStock("#sauce-addon-stock", sauceAddons, "sauce");
   const productRoot = document.querySelector("#product-stock");
   productRoot.replaceChildren(...products.map((item) => {
     const chip = document.createElement("span"); chip.className = "stock-chip product-chip"; chip.textContent = (item.icon || "🍧") + " " + item.name;
@@ -143,17 +158,44 @@ function renderStock() {
   renderPix();
 }
 
-function addOption(kind, value, price = 0) {
+function addOption(kind, value) {
   const list = kind === "topping" ? toppings : sauces;
   if (list.some((entry) => entry.toLocaleLowerCase("pt-BR") === value.toLocaleLowerCase("pt-BR"))) { notify("Essa opção já existe."); return; }
-  if (kind === "topping") { toppings = [...toppings, value]; toppingPrices[value] = Math.max(0, Number(price) || 0); persist(TOPPINGS_KEY, toppings); persist(TOPPING_PRICES_KEY, toppingPrices); }
+  if (kind === "topping") { toppings = [...toppings, value]; persist(TOPPINGS_KEY, toppings); }
   else { sauces = [...sauces, value]; persist(SAUCES_KEY, sauces); }
-  renderStock(); makeOptions(document.querySelector(kind === "topping" ? "#topping-options" : "#sauce-options"), listFor(kind), kind);
-  enforceLimit(kind); notify("Opção adicionada!");
+  renderStock(); makeOptions(document.querySelector(kind === "topping" ? "#topping-options" : "#sauce-options"), listFor(kind), kind); enforceLimit(kind); notify("Opção adicionada!");
+}
+function addonList(kind) { return kind === "topping" ? toppingAddons : sauceAddons; }
+function saveAddonList(kind, list) { if (kind === "topping") { toppingAddons = list; persist(TOPPING_ADDONS_KEY, list); } else { sauceAddons = list; persist(SAUCE_ADDONS_KEY, list); } }
+function addAddonOption(kind, name, price) {
+  const list = addonList(kind);
+  if (list.some((entry) => entry.name.toLocaleLowerCase("pt-BR") === name.toLocaleLowerCase("pt-BR"))) { notify("Esse adicional já existe."); return; }
+  saveAddonList(kind, [...list, { name, price: Math.max(0, Number(price) || 0) }]); renderStock(); renderCustomerAddons(); notify("Adicional cadastrado!");
+}
+function renderAddonStock(selector, items, kind) {
+  const root = document.querySelector(selector); if (!root) return;
+  root.replaceChildren(...items.map((item) => {
+    const wrap = document.createElement("span"); wrap.className = "stock-item-wrap addon-stock-item";
+    const button = document.createElement("button"); button.type = "button"; button.className = "stock-chip addon-chip" + (isUnavailable(item.name) ? " unavailable" : "");
+    button.textContent = `${item.name} · ${formatMoney(item.price)}`; button.setAttribute("aria-pressed", String(isUnavailable(item.name)));
+    button.setAttribute("aria-label", `${item.name}, ${formatMoney(item.price)}: ` + (isUnavailable(item.name) ? "indisponível, toque para liberar" : "disponível, toque para riscar"));
+    button.addEventListener("click", () => toggleUnavailable(item.name)); wrap.append(button);
+    const priceForm = document.createElement("form"); priceForm.className = "stock-price-form";
+    const priceInput = document.createElement("input"); priceInput.type = "number"; priceInput.min = "0.01"; priceInput.step = "0.50"; priceInput.value = Number(item.price).toFixed(2); priceInput.setAttribute("aria-label", `Preço de ${item.name}`);
+    const save = document.createElement("button"); save.type = "submit"; save.textContent = "Salvar"; priceForm.append(priceInput, save);
+    priceForm.addEventListener("submit", (event) => { event.preventDefault(); const price = Number(priceInput.value); if (!(price > 0)) { notify("Informe um preço maior que zero."); return; } saveAddonList(kind, addonList(kind).map((entry) => entry.name === item.name ? { ...entry, price } : entry)); renderStock(); renderCustomerAddons(); updateOrderPrice(); notify("Preço atualizado."); }); wrap.append(priceForm);
+    const remove = document.createElement("button"); remove.type = "button"; remove.className = "delete-option"; remove.textContent = "×"; remove.setAttribute("aria-label", `Excluir adicional ${item.name}`);
+    remove.addEventListener("click", () => { saveAddonList(kind, addonList(kind).filter((entry) => entry.name !== item.name)); renderStock(); renderCustomerAddons(); updateOrderPrice(); }); wrap.append(remove);
+    return wrap;
+  }));
+}
+function renderCustomerAddons() {
+  makeAddonOptions(document.querySelector("#topping-addon-options"), document.querySelector("#topping-addon-panel"), toppingAddons, "toppingAddon");
+  makeAddonOptions(document.querySelector("#sauce-addon-options"), document.querySelector("#sauce-addon-panel"), sauceAddons, "sauceAddon");
 }
 function listFor(kind) { return kind === "topping" ? toppings : sauces; }
 function deleteOption(kind, value) {
-  if (kind === "topping") { toppings = toppings.filter((item) => item !== value); persist(TOPPINGS_KEY, toppings); }
+  if (kind === "topping") { toppings = toppings.filter((item) => item !== value); delete toppingPrices[value]; persist(TOPPINGS_KEY, toppings); persist(TOPPING_PRICES_KEY, toppingPrices); }
   else { sauces = sauces.filter((item) => item !== value); persist(SAUCES_KEY, sauces); }
   unavailable = unavailable.filter((item) => item !== value); persist(STOCK_KEY, unavailable);
   renderStock(); makeOptions(document.querySelector(kind === "topping" ? "#topping-options" : "#sauce-options"), listFor(kind), kind); enforceLimit(kind);
@@ -200,7 +242,7 @@ function deleteProduct(id) {
 function addProduct(name, icon, price = 0) {
   if (products.some((item) => item.name.toLocaleLowerCase("pt-BR") === name.toLocaleLowerCase("pt-BR"))) { notify("Esse produto já existe."); return; }
   const id = `produto-${Date.now()}`;
-  products = [...products, { id, name, icon, price: Math.max(0, Number(price) || 0), toppingLimit: 3, sauceLimit: 2 }]; persist(PRODUCTS_KEY, products);
+  products = [...products, { id, name, icon, price: Math.max(0, Number(price) || 0), toppingLimit: 3, sauceLimit: 1 }]; persist(PRODUCTS_KEY, products);
   renderProducts(); form.elements.product.value = id; updateProduct(); renderStock(); notify("Produto cadastrado!");
 }
 
@@ -223,10 +265,18 @@ function makeOrderCard(order) {
   const productTag = document.createElement("span"); productTag.className = "order-product";
   productTag.textContent = `${order.productIcon || "🍧"} ${order.productName || order.product}`;
   const detail = document.createElement("p"); detail.className = "order-detail";
-  const toppingNames = (order.toppings || []).map((item) => typeof item === "string" ? item : item.name);
-  detail.textContent = `Complementos: ${toppingNames.join(", ") || "nenhum"} · Caldas: ${(order.sauces || []).join(", ") || "nenhuma"}`;
+  const toppingItems = (order.toppings || []).map((item) => typeof item === "string" ? { name: item, paid: false } : item);
+  const sauceItems = (order.sauces || []).map((item) => typeof item === "string" ? { name: item, paid: false } : item);
+  const freeToppings = toppingItems.filter((item) => !item.paid).map((item) => item.name);
+  const paidToppings = toppingItems.filter((item) => item.paid).map((item) => `${item.name} (+${formatMoney(item.price)})`);
+  const freeSauces = sauceItems.filter((item) => !item.paid).map((item) => item.name);
+  const paidSauces = sauceItems.filter((item) => item.paid).map((item) => `${item.name} (+${formatMoney(item.price)})`);
+  detail.textContent = `Complementos: ${freeToppings.join(", ") || "nenhum"} · Caldas: ${freeSauces.join(", ") || "nenhuma"}`;
   const price = document.createElement("p"); price.className = "order-total-detail"; price.textContent = `Total: ${formatMoney(orderTotal(order))}`;
-  card.append(top, productTag, detail, price);
+  card.append(top, productTag, detail);
+  if (paidToppings.length) { const extra = document.createElement("p"); extra.className = "order-detail paid-order-detail"; extra.textContent = `Adicionais de complemento: ${paidToppings.join(", ")}`; card.append(extra); }
+  if (paidSauces.length) { const extra = document.createElement("p"); extra.className = "order-detail paid-order-detail"; extra.textContent = `Adicionais de calda: ${paidSauces.join(", ")}`; card.append(extra); }
+  card.append(price);
   if (order.done) { const served = document.createElement("p"); served.className = "order-served"; served.textContent = `Atendido por ${order.servedBy || "vendedora"}${order.doneAt ? " · " + new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(order.doneAt)) : ""}`; card.append(served); }
   if (order.note) { const note = document.createElement("p"); note.className = "order-note"; note.textContent = `Obs.: ${order.note}`; card.append(note); }
   if (currentRole !== "orders_viewer") {
@@ -262,8 +312,9 @@ function renderHistory() {
 }
 function updateOrderPrice() {
   const chosenProduct = products.find((item) => item.id === product());
-  const extra = selected("topping").reduce((sum, name) => sum + (Number(toppingPrices[name]) || 0), 0);
-  document.querySelector("#order-total").textContent = formatMoney((Number(chosenProduct?.price) || 0) + extra);
+  const legacyExtra = selected("topping").reduce((sum, name) => sum + (Number(toppingPrices[name]) || 0), 0);
+  const addonsTotal = [...selectedAddons("toppingAddon", toppingAddons), ...selectedAddons("sauceAddon", sauceAddons)].reduce((sum, item) => sum + (Number(item.price) || 0), 0);
+  document.querySelector("#order-total").textContent = formatMoney((Number(chosenProduct?.price) || 0) + legacyExtra + addonsTotal);
 }
 
 let authUser = null;
@@ -282,24 +333,27 @@ function showOrdersSyncStatus(message, error = false) {
   node.classList.toggle("sync-error", error);
 }
 function shopSettingsSnapshot() {
-  return { products, toppings, sauces, unavailable, toppingPrices, pixKey };
+  return { products, toppings, sauces, unavailable, toppingPrices, toppingAddons, sauceAddons, pixKey };
 }
 function applyShopSettings(payload) {
   if (!payload || typeof payload !== "object") return;
   applyingRemoteSettings = true;
   if (Array.isArray(payload.products) && payload.products.length) {
-    products = payload.products.map((item) => ({ ...item, price: Number(item.price) || 0, icon: item.id === "potinho" ? "🫙" : item.id === "copinho" ? "🥤" : item.icon }));
+    products = payload.products.map((item) => { const oldDefault = (item.id === "potinho" && item.toppingLimit === 3 && item.sauceLimit === 2) || (item.id === "copinho" && item.toppingLimit === 1 && item.sauceLimit === 1); return { ...item, toppingLimit: oldDefault ? 3 : item.toppingLimit, sauceLimit: oldDefault ? 1 : item.sauceLimit, price: Number(item.price) || 0, icon: item.id === "potinho" ? "🫙" : item.id === "copinho" ? "🥤" : item.icon }; });
     persist(PRODUCTS_KEY, products);
   }
   if (Array.isArray(payload.toppings)) { toppings = payload.toppings.filter((item) => typeof item === "string"); persist(TOPPINGS_KEY, toppings); }
   if (Array.isArray(payload.sauces)) { sauces = payload.sauces.filter((item) => typeof item === "string"); persist(SAUCES_KEY, sauces); }
   if (Array.isArray(payload.unavailable)) { unavailable = payload.unavailable.filter((item) => typeof item === "string"); persist(STOCK_KEY, unavailable); }
   if (payload.toppingPrices && typeof payload.toppingPrices === "object" && !Array.isArray(payload.toppingPrices)) { toppingPrices = payload.toppingPrices; persist(TOPPING_PRICES_KEY, toppingPrices); }
+  if (Array.isArray(payload.toppingAddons)) { toppingAddons = payload.toppingAddons.map(normalizeAddon).filter(Boolean); persist(TOPPING_ADDONS_KEY, toppingAddons); }
+  if (Array.isArray(payload.sauceAddons)) { sauceAddons = payload.sauceAddons.map(normalizeAddon).filter(Boolean); persist(SAUCE_ADDONS_KEY, sauceAddons); }
   if (typeof payload.pixKey === "string") { pixKey = payload.pixKey; localStorage.setItem(PIX_KEY_STORAGE, pixKey); }
-  applyingRemoteSettings = false;
+  const migrated = migrateLegacyPaidToppings(); applyingRemoteSettings = false; if (migrated) scheduleSettingsSync();
   renderProducts();
   makeOptions(document.querySelector("#topping-options"), toppings, "topping");
   makeOptions(document.querySelector("#sauce-options"), sauces, "sauce");
+  renderCustomerAddons();
   updateProduct();
   updateOrderPrice();
   renderStock();
@@ -703,11 +757,13 @@ form.addEventListener("submit", async (event) => {
   if (!name) { document.querySelector("#customer-name").focus(); return; }
   const chosenProduct = products.find((item) => item.id === product());
   const selectedToppings = selected("topping").map((item) => ({ name: item, price: Number(toppingPrices[item]) || 0 }));
+  const paidToppings = selectedAddons("toppingAddon", toppingAddons).map((item) => ({ name: item.name, price: item.price, paid: true }));
+  const paidSauces = selectedAddons("sauceAddon", sauceAddons).map((item) => ({ name: item.name, price: item.price, paid: true }));
   const basePrice = Number(chosenProduct.price) || 0;
-  const total = basePrice + selectedToppings.reduce((sum, item) => sum + item.price, 0);
+  const total = basePrice + [...selectedToppings, ...paidToppings, ...paidSauces].reduce((sum, item) => sum + item.price, 0);
   const order = { id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`, name,
     product: chosenProduct.id, productName: chosenProduct.name, productIcon: chosenProduct.icon, basePrice, total,
-    toppings: selectedToppings, sauces: selected("sauce"), note: document.querySelector("#order-note").value.trim(), createdAt: new Date().toISOString(), done: false };
+    toppings: [...selectedToppings, ...paidToppings], sauces: [...selected("sauce"), ...paidSauces], note: document.querySelector("#order-note").value.trim(), createdAt: new Date().toISOString(), done: false };
   orders.unshift(order); persist(STORAGE_KEY, orders); renderOrders();
   const submitButton = form.querySelector(".submit-button"); submitButton.disabled = true;
   form.reset(); form.elements.product.value = "potinho"; updateProduct(); updateOrderPrice();
@@ -723,8 +779,12 @@ form.addEventListener("submit", async (event) => {
 
 document.querySelectorAll(".add-option-form").forEach((addForm) => addForm.addEventListener("submit", (event) => {
   event.preventDefault(); const input = addForm.querySelector(".option-name-input") || addForm.querySelector("input"); const value = input.value.trim();
-  const price = Number(addForm.querySelector(".option-price-input")?.value) || 0;
-  if (value) { addOption(addForm.dataset.kind, value, price); addForm.reset(); const priceInput = addForm.querySelector(".option-price-input"); if (priceInput) priceInput.value = "0"; }
+  if (value) { addOption(addForm.dataset.kind, value); addForm.reset(); }
+}));
+document.querySelectorAll(".addon-form").forEach((addForm) => addForm.addEventListener("submit", (event) => {
+  event.preventDefault(); const name = addForm.querySelector(".addon-name-input").value.trim(); const price = Number(addForm.querySelector(".addon-price-input").value);
+  if (!name) return; if (!(price > 0)) { notify("Informe um preço maior que zero."); return; }
+  addAddonOption(addForm.dataset.kind, name, price); addForm.reset(); addForm.querySelector(".addon-price-input").value = "0.50";
 }));
 document.querySelector("#add-product-form").addEventListener("submit", (event) => {
   event.preventDefault(); const name = document.querySelector("#new-product-name").value.trim();
@@ -732,9 +792,11 @@ document.querySelector("#add-product-form").addEventListener("submit", (event) =
 });
 window.addEventListener("hashchange", renderRoute);
 window.addEventListener("online", async () => { if (sellerApproved) void startOrdersSync(); else { const sent = await syncPendingOrdersToCloud(); if (!sent) notify("Há pedidos offline aguardando conexão com o Supabase."); void loadShopSettingsFromCloud(); } });
+migrateLegacyPaidToppings();
 renderProducts();
 makeOptions(document.querySelector("#topping-options"), toppings, "topping");
 makeOptions(document.querySelector("#sauce-options"), sauces, "sauce");
+renderCustomerAddons();
 updateProduct(); updateOrderPrice(); renderStock(); renderOrders(); renderRoute();
 void loadShopSettingsFromCloud();
 void startShopSettingsRealtime();
