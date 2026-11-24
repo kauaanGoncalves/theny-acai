@@ -36,3 +36,8 @@
 @media(max-width:760px){.hero{margin-left:calc(-15px - env(safe-area-inset-left));margin-right:calc(-15px - env(safe-area-inset-right));padding-left:calc(18px + env(safe-area-inset-left));padding-right:calc(18px + env(safe-area-inset-right));padding-top:calc(23px + env(safe-area-inset-top))}.vendor-mode .hero{padding-top:calc(22px + env(safe-area-inset-top))}.addon-stock-section .stock-grid{grid-template-columns:1fr;gap:14px}}
 .hero{isolation:isolate}.hero::before{content:"";position:absolute;z-index:-1;top:calc(0px - env(safe-area-inset-top));left:calc(0px - env(safe-area-inset-left));right:calc(0px - env(safe-area-inset-right));bottom:0;background:inherit;pointer-events:none}
 @media(max-width:760px){input,select,textarea,.text-input,.seller-role-select{font-size:16px!important}.stock-price-form input,.addon-form .addon-price-input{width:88px;min-height:44px;padding:8px 9px;font-size:16px!important}.stock-price-form button,.addon-form button{min-height:44px;font-size:12px}}@media(max-width:390px){.page{padding-left:12px;padding-right:12px}.order-card{padding-left:15px;padding-right:15px}.addon-form .addon-name-input{flex:1 1 125px}.addon-form .addon-price-input{flex:0 0 82px;width:82px}}
+
+/* Text controls remain readable and do not trigger mobile browser zoom. */
+input:not([type="checkbox"]):not([type="radio"]),select,textarea{font-size:16px!important}
+.stock-price-form input,.addon-form .addon-price-input{width:88px;min-height:44px;padding:8px 9px}
+.addon-form{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 9px}.addon-form .addon-name-input{flex:1 1 140px;min-width:0}.addon-form .addon-price-input{flex:0 0 88px}
