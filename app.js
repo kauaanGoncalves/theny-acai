@@ -192,24 +192,29 @@ function makeOrderCard(order) {
   const time = document.createElement("time"); time.className = "order-time"; time.dateTime = order.createdAt;
   time.textContent = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(order.createdAt));
   info.append(name, time);
-  const remove = document.createElement("button"); remove.className = "remove-order"; remove.type = "button"; remove.textContent = "×";
-  remove.setAttribute("aria-label", `Excluir pedido de ${order.name}`);
-  remove.addEventListener("click", () => { orders = orders.filter((item) => item.id !== order.id); persist(STORAGE_KEY, orders); renderOrders(); });
-  top.append(info, remove);
+  if (currentRole === "orders_viewer") top.append(info);
+  else {
+    const remove = document.createElement("button"); remove.className = "remove-order"; remove.type = "button"; remove.textContent = "×";
+    remove.setAttribute("aria-label", `Excluir pedido de ${order.name}`);
+    remove.addEventListener("click", () => { orders = orders.filter((item) => item.id !== order.id); persist(STORAGE_KEY, orders); renderOrders(); });
+    top.append(info, remove);
+  }
   const productTag = document.createElement("span"); productTag.className = "order-product";
   productTag.textContent = `${order.productIcon || "🍧"} ${order.productName || order.product}`;
   const detail = document.createElement("p"); detail.className = "order-detail";
   detail.textContent = `Complementos: ${order.toppings.join(", ") || "nenhum"} · Caldas: ${order.sauces.join(", ") || "nenhuma"}`;
   card.append(top, productTag, detail);
   if (order.note) { const note = document.createElement("p"); note.className = "order-note"; note.textContent = `Obs.: ${order.note}`; card.append(note); }
-  if (!order.done) {
-    const done = document.createElement("button"); done.className = "status-button"; done.type = "button"; done.textContent = "✓ Marcar como realizado";
-    done.addEventListener("click", () => { orders = orders.map((item) => item.id === order.id ? { ...item, done: true } : item); persist(STORAGE_KEY, orders); renderOrders(); });
-    card.append(done);
-  } else {
-    const undo = document.createElement("button"); undo.className = "status-button"; undo.type = "button"; undo.textContent = "↶ Reabrir pedido";
-    undo.addEventListener("click", () => { orders = orders.map((item) => item.id === order.id ? { ...item, done: false } : item); persist(STORAGE_KEY, orders); renderOrders(); });
-    card.append(undo);
+  if (currentRole !== "orders_viewer") {
+    if (!order.done) {
+      const done = document.createElement("button"); done.className = "status-button"; done.type = "button"; done.textContent = "✓ Marcar como realizado";
+      done.addEventListener("click", () => { orders = orders.map((item) => item.id === order.id ? { ...item, done: true } : item); persist(STORAGE_KEY, orders); renderOrders(); });
+      card.append(done);
+    } else {
+      const undo = document.createElement("button"); undo.className = "status-button"; undo.type = "button"; undo.textContent = "↶ Reabrir pedido";
+      undo.addEventListener("click", () => { orders = orders.map((item) => item.id === order.id ? { ...item, done: false } : item); persist(STORAGE_KEY, orders); renderOrders(); });
+      card.append(undo);
+    }
   }
   return card;
 }
@@ -218,12 +223,13 @@ function renderOrders() {
   ordersRoot.replaceChildren(...orders.map(makeOrderCard));
   document.querySelector("#order-count").textContent = String(orders.length);
   document.querySelector("#orders-empty").hidden = orders.length > 0;
-  document.querySelector("#clear-orders").hidden = !orders.some((order) => order.done);
+  document.querySelector("#clear-orders").hidden = currentRole === "orders_viewer" || !orders.some((order) => order.done);
 }
 
 let authUser = null;
 let sellerApproved = false;
 let sellerIsOwner = false;
+let currentRole = null;
 let accessCheckId = 0;
 
 function showAuthStatus(message, error = false) {
@@ -231,20 +237,21 @@ function showAuthStatus(message, error = false) {
   status.textContent = message;
   status.classList.toggle("error", error);
 }
-function setAuthView({ signedIn = false, approved = false, owner = false } = {}) {
+function setAuthView({ signedIn = false, approved = false, owner = false, role = null } = {}) {
   document.querySelector("#seller-login-form").hidden = signedIn;
   document.querySelector("#owner-settings").hidden = !owner;
   document.querySelector("#seller-logout").hidden = !signedIn;
   document.querySelector("#seller-logout-panel").hidden = !signedIn;
   document.querySelector("#seller-content").hidden = !approved;
   document.querySelector("#seller-approvals").hidden = !owner;
+  document.querySelector(".vendor-stock").hidden = approved && role === "orders_viewer";
 }
 async function refreshSellerAccess() {
   const checkId = ++accessCheckId;
   const { data: { session } } = await supabase.auth.getSession();
   if (checkId !== accessCheckId) return;
   authUser = session?.user || null;
-  sellerApproved = false; sellerIsOwner = false;
+  sellerApproved = false; sellerIsOwner = false; currentRole = null;
   if (!authUser) {
     setAuthView();
     showAuthStatus("Entre com uma conta aprovada ou solicite seu cadastro.");
@@ -263,31 +270,107 @@ async function refreshSellerAccess() {
     showAuthStatus("Cadastro recebido. A responsável precisa aprovar seu acesso.");
     return;
   }
-  sellerApproved = true; sellerIsOwner = data.role === "owner";
-  setAuthView({ signedIn: true, approved: true, owner: sellerIsOwner });
-  showAuthStatus(sellerIsOwner ? "Conta administradora conectada." : "Conta aprovada.");
+  sellerApproved = true; sellerIsOwner = data.role === "owner"; currentRole = data.role;
+  setAuthView({ signedIn: true, approved: true, owner: sellerIsOwner, role: currentRole });
+  showAuthStatus(sellerIsOwner ? "Conta administradora conectada." : currentRole === "orders_viewer" ? "Acesso somente para visualizar pedidos." : "Conta aprovada.");
   renderStock(); renderOrders();
-  if (sellerIsOwner) await renderSellerApprovals();
+  if (sellerIsOwner) { await renderSellerApprovals(); await renderSellerAccounts(); }
+}
+function roleSelect(selectedRole) {
+  const select = document.createElement("select"); select.className = "seller-role-select";
+  [["editor", "Editar produtos e gerenciar pedidos"], ["orders_viewer", "Somente visualizar pedidos"]].forEach(([value, label]) => {
+    const option = document.createElement("option"); option.value = value; option.textContent = label; option.selected = value === selectedRole; select.append(option);
+  });
+  return select;
+}
+async function deleteSellerAccount(seller) {
+  if (!window.confirm("Excluir a conta e o acesso de " + seller.email + "? A pessoa precisará se cadastrar novamente para voltar.")) return;
+  const { error } = await supabase.rpc("delete_seller_account", { target_user_id: seller.user_id });
+  if (error) { showAuthStatus("Não foi possível excluir. Confirme se a migração de permissões foi aplicada.", true); return; }
+  notify("Conta da vendedora excluída."); await renderSellerApprovals(); await renderSellerAccounts();
+}
+function sellerRoleSelect(selectedRole) {
+  const select = document.createElement("select"); select.className = "seller-role-select";
+  [["editor", "Editar produtos e gerenciar pedidos"], ["orders_viewer", "Somente visualizar pedidos"]].forEach(([value, label]) => {
+    const option = document.createElement("option"); option.value = value; option.textContent = label; option.selected = value === selectedRole; select.append(option);
+  });
+  return select;
+}
+async function removeSellerAccount(seller) {
+  if (!window.confirm("Excluir a conta de " + seller.email + "? O acesso será removido e ela precisará se cadastrar novamente para voltar.")) return;
+  const { error } = await supabase.rpc("delete_seller_account", { target_user_id: seller.user_id });
+  if (error) { showAuthStatus("Não foi possível excluir a conta. Confira se a migração de permissões foi executada.", true); return; }
+  notify("Conta da vendedora excluída.");
+  await renderSellerApprovals(); await renderSellerAccounts();
 }
 async function renderSellerApprovals() {
   const root = document.querySelector("#seller-approval-list");
   const { data, error } = await supabase.from("seller_access")
-    .select("user_id, email, created_at").eq("role", "seller").is("approved_at", null).order("created_at");
+    .select("user_id, email, role, created_at").neq("role", "owner").is("approved_at", null).order("created_at");
   root.replaceChildren();
-  if (error) { root.textContent = "Não foi possível carregar os cadastros pendentes."; return; }
-  if (!data?.length) { root.textContent = "Nenhum cadastro aguardando aprovação."; return; }
+  if (error) { root.textContent = "Não foi possível carregar as solicitações."; return; }
+  if (!data?.length) { root.textContent = "Nenhuma solicitação pendente."; return; }
   data.forEach((seller) => {
     const row = document.createElement("div"); row.className = "seller-approval-row";
-    const email = document.createElement("span"); email.textContent = seller.email;
+    const email = document.createElement("span"); email.className = "seller-row-email"; email.textContent = seller.email;
+    const access = sellerRoleSelect(seller.role);
     const approve = document.createElement("button"); approve.type = "button"; approve.textContent = "Aprovar";
+    const remove = document.createElement("button"); remove.type = "button"; remove.className = "seller-delete-button"; remove.textContent = "Excluir";
     approve.addEventListener("click", async () => {
       approve.disabled = true;
       const { error: updateError } = await supabase.from("seller_access")
-        .update({ approved_at: new Date().toISOString() }).eq("user_id", seller.user_id);
-      if (updateError) { showAuthStatus("Não foi possível aprovar esse cadastro.", true); approve.disabled = false; return; }
-      notify("Vendedora aprovada."); await renderSellerApprovals();
+        .update({ role: access.value, approved_at: new Date().toISOString() }).eq("user_id", seller.user_id);
+      if (updateError) { showAuthStatus("Não foi possível aprovar. Execute a migração de permissões no Supabase.", true); approve.disabled = false; return; }
+      notify("Vendedora aprovada."); await renderSellerApprovals(); await renderSellerAccounts();
     });
-    row.append(email, approve); root.append(row);
+    remove.addEventListener("click", () => removeSellerAccount(seller));
+    row.append(email, access, approve, remove); root.append(row);
+  });
+}
+async function renderSellerAccounts() {
+  const root = document.querySelector("#seller-account-list");
+  const { data, error } = await supabase.from("seller_access")
+    .select("user_id, email, role, approved_at").neq("role", "owner").not("approved_at", "is", null).order("email");
+  root.replaceChildren();
+  if (error) { root.textContent = "Não foi possível carregar as contas cadastradas."; return; }
+  if (!data?.length) { root.textContent = "Nenhuma vendedora aprovada ainda."; return; }
+  data.forEach((seller) => {
+    const row = document.createElement("div"); row.className = "seller-approval-row";
+    const email = document.createElement("span"); email.className = "seller-row-email"; email.textContent = seller.email;
+    const access = sellerRoleSelect(seller.role);
+    const save = document.createElement("button"); save.type = "button"; save.textContent = "Salvar acesso";
+    save.addEventListener("click", async () => {
+      save.disabled = true;
+      const { error: updateError } = await supabase.from("seller_access").update({ role: access.value }).eq("user_id", seller.user_id);
+      if (updateError) { showAuthStatus("Não foi possível alterar o acesso. Execute a migração no Supabase.", true); save.disabled = false; return; }
+      notify("Acesso atualizado."); await renderSellerAccounts();
+    });
+    const remove = document.createElement("button"); remove.type = "button"; remove.className = "seller-delete-button"; remove.textContent = "Excluir";
+    remove.addEventListener("click", () => removeSellerAccount(seller));
+    row.append(email, access, save, remove); root.append(row);
+  });
+}
+async function renderSellerAccounts() {
+  const root = document.querySelector("#seller-account-list");
+  const { data, error } = await supabase.from("seller_access")
+    .select("user_id, email, role, approved_at").neq("role", "owner").not("approved_at", "is", null).order("email");
+  root.replaceChildren();
+  if (error) { root.textContent = "Não foi possível carregar as contas aprovadas."; return; }
+  if (!data?.length) { root.textContent = "Nenhuma vendedora aprovada ainda."; return; }
+  data.forEach((seller) => {
+    const row = document.createElement("div"); row.className = "seller-approval-row";
+    const email = document.createElement("span"); email.textContent = seller.email;
+    const access = roleSelect(seller.role);
+    const save = document.createElement("button"); save.type = "button"; save.textContent = "Salvar";
+    save.addEventListener("click", async () => {
+      save.disabled = true;
+      const { error: updateError } = await supabase.from("seller_access").update({ role: access.value }).eq("user_id", seller.user_id);
+      if (updateError) { showAuthStatus("Não foi possível alterar o acesso. Aplique a migração de permissões.", true); save.disabled = false; return; }
+      notify("Permissão atualizada."); await renderSellerAccounts();
+    });
+    const remove = document.createElement("button"); remove.type = "button"; remove.className = "seller-delete-button"; remove.textContent = "Excluir";
+    remove.addEventListener("click", () => deleteSellerAccount(seller));
+    row.append(email, access, save, remove); root.append(row);
   });
 }
 async function sellerLogin(event) {
@@ -343,7 +426,7 @@ document.querySelector("#seller-resend").addEventListener("click", async () => {
 });
 async function sellerLogout() {
   await supabase.auth.signOut();
-  authUser = null; sellerApproved = false; sellerIsOwner = false;
+  authUser = null; sellerApproved = false; sellerIsOwner = false; currentRole = null;
   setAuthView(); showAuthStatus("Você saiu da conta.");
 }
 document.querySelector("#seller-logout").addEventListener("click", sellerLogout);
