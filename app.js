@@ -1,6 +1,8 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.105.0";
 const supabase = createClient("https://wyvszpgwqmwdkqaqhsed.supabase.co", "sb_publishable_dNOgfbzU4NLsUYZE0tIVIg_ZEMIHC8z", { auth: { experimental: { passkey: true } } });
 const STORAGE_KEY = "theny-acai-orders-v1";
+const PENDING_ORDERS_KEY = "theny-acai-pending-orders-v1";
+const LOCAL_MIGRATED_KEY = "theny-acai-orders-migrated-v1";
 const STOCK_KEY = "theny-acai-stock-v1";
 const TOPPINGS_KEY = "theny-acai-toppings-v1";
 const SAUCES_KEY = "theny-acai-sauces-v1";
@@ -361,7 +363,12 @@ async function fetchCloudOrders() {
   syncInFlight = false;
   if (error) showOrdersSyncStatus("Não foi possível carregar os pedidos compartilhados. Verifique a migração e a conexão.", true);
   else {
-    orders = (data || []).map(fromCloudOrder);
+    const cloudOrders = (data || []).map(fromCloudOrder);
+    const retained = [...load(PENDING_ORDERS_KEY, [])];
+    if (localStorage.getItem(LOCAL_MIGRATED_KEY) !== "true") retained.push(...load(STORAGE_KEY, []));
+    const byId = new Map(cloudOrders.map((order) => [String(order.id), order]));
+    retained.forEach((order) => { if (!byId.has(String(order.id))) byId.set(String(order.id), order); });
+    orders = [...byId.values()].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     persist(STORAGE_KEY, orders);
     renderOrders();
     showOrdersSyncStatus("Pedidos e histórico sincronizados entre aparelhos.");
@@ -369,17 +376,34 @@ async function fetchCloudOrders() {
   if (syncRefreshQueued) { syncRefreshQueued = false; void fetchCloudOrders(); }
 }
 async function migrateLocalOrdersToCloud() {
-  if (!sellerApproved || !["owner", "editor"].includes(currentRole) || !orders.length) return true;
-  const { error } = await supabase.from("theny_orders").upsert(orders.map(toCloudOrder), { onConflict: "id", ignoreDuplicates: true });
-  if (error) { showOrdersSyncStatus("Não foi possível migrar os pedidos salvos neste aparelho. Verifique as permissões do Supabase.", true); return false; }
+  if (localStorage.getItem(LOCAL_MIGRATED_KEY) === "true") return true;
+  const localOrders = load(STORAGE_KEY, []);
+  if (!localOrders.length) { localStorage.setItem(LOCAL_MIGRATED_KEY, "true"); return true; }
+  if (!sellerApproved || !["owner", "editor"].includes(currentRole)) return false;
+  if (localOrders.length) {
+    const { error } = await supabase.from("theny_orders").upsert(localOrders.map(toCloudOrder), { onConflict: "id", ignoreDuplicates: true });
+    if (error) { showOrdersSyncStatus("Não foi possível migrar os pedidos salvos neste aparelho. Verifique as permissões do Supabase.", true); return false; }
+  }
+  localStorage.setItem(LOCAL_MIGRATED_KEY, "true");
+  return true;
+}
+async function syncPendingOrdersToCloud() {
+  const pending = load(PENDING_ORDERS_KEY, []);
+  if (!pending.length) return true;
+  const pendingRows = pending.map((order) => { const row = toCloudOrder(order); delete row.done; delete row.done_at; delete row.served_by; return row; });
+  const { error } = await supabase.from("theny_orders").upsert(pendingRows, { onConflict: "id", ignoreDuplicates: true });
+  if (error) return false;
+  persist(PENDING_ORDERS_KEY, []);
   return true;
 }
 async function startOrdersSync() {
   if (!sellerApproved) return;
   await loadShopSettingsFromCloud({ seedIfEmpty: true });
   const migrated = await migrateLocalOrdersToCloud();
+  const pendingSynced = await syncPendingOrdersToCloud();
   await fetchCloudOrders();
   if (!migrated) showOrdersSyncStatus("Parte do histórico local ainda não foi enviada. Confira as permissões do Supabase.", true);
+  else if (!pendingSynced) showOrdersSyncStatus("Pedidos salvos offline aguardam envio. Confira a conexão.", true);
   if (!ordersChannel) {
     ordersChannel = supabase.channel("theny-orders-live")
       .on("postgres_changes", { event: "*", schema: "public", table: "theny_orders" }, () => { void fetchCloudOrders(); })
@@ -692,8 +716,10 @@ form.addEventListener("submit", async (event) => {
   const { error } = await supabase.from("theny_orders").insert(customerOrderRow);
   submitButton.disabled = false;
   document.querySelector("#customer-name").focus();
-  if (error) notify("Pedido salvo só neste aparelho. A sincronização precisa do script SQL no Supabase.");
-  else notify("Pedido enviado para o painel da vendedora!");
+  if (error) {
+    const pending = load(PENDING_ORDERS_KEY, []); if (!pending.some((item) => String(item.id) === String(order.id))) pending.unshift(order); persist(PENDING_ORDERS_KEY, pending);
+    notify("Pedido salvo offline. Ele será enviado quando a conexão com o Supabase voltar.");
+  } else notify("Pedido enviado para o painel da vendedora!");
 });
 
 document.querySelectorAll(".add-option-form").forEach((addForm) => addForm.addEventListener("submit", (event) => {
@@ -706,7 +732,7 @@ document.querySelector("#add-product-form").addEventListener("submit", (event) =
   if (name) { addProduct(name, document.querySelector("#new-product-icon").value, document.querySelector("#new-product-price").value); event.currentTarget.reset(); }
 });
 window.addEventListener("hashchange", renderRoute);
-window.addEventListener("online", () => { if (sellerApproved) void startOrdersSync(); else void loadShopSettingsFromCloud(); });
+window.addEventListener("online", async () => { if (sellerApproved) void startOrdersSync(); else { const sent = await syncPendingOrdersToCloud(); if (!sent) notify("Há pedidos offline aguardando conexão com o Supabase."); void loadShopSettingsFromCloud(); } });
 renderProducts();
 makeOptions(document.querySelector("#topping-options"), toppings, "topping");
 makeOptions(document.querySelector("#sauce-options"), sauces, "sauce");
