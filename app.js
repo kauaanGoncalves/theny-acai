@@ -279,7 +279,7 @@ document.querySelector("#seller-signup").addEventListener("click", async () => {
     return;
   }
   showAuthStatus("Enviando solicitação…");
-  const { data, error } = await supabase.auth.signUp({ email, password });
+  const { data, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: "https://kauaangoncalves.github.io/theny-acai/#painel" } });
   if (error) { showAuthStatus("Não foi possível solicitar o cadastro. Confira os dados e tente novamente.", true); return; }
   if (data.session) await refreshSellerAccess();
   else showAuthStatus("Solicitação enviada. Confirme seu e-mail; depois, aguarde a aprovação da responsável.");
