@@ -12,7 +12,10 @@ As opções e limites seguem a ficha de referência: Potinho permite até 3 comp
 
 Os arquivos são estáticos e podem ser publicados em um serviço de hospedagem estática, como GitHub Pages. O site tem manifest e service worker para instalação na tela inicial e uso offline depois do primeiro acesso. Para publicar, envie os arquivos para um repositório e ative Pages nas configurações do repositório.
 
-## Importante sobre os pedidos
+## Sincronização entre aparelhos
 
-Os pedidos, disponibilidade e opções cadastradas são salvos no navegador e aparelho em uso. Esse fluxo funciona quando a vendedora abre o link no próprio celular e mostra o catálogo ao cliente. Para clientes abrirem o link em seus aparelhos e os pedidos aparecerem no painel da vendedora, será necessário configurar uma conta de banco de dados online.
+Pedidos, histórico, cardápio, estoque, preços e chave Pix podem ser compartilhados pelo Supabase. Para ativar a sincronização, execute no SQL Editor do Supabase, nesta ordem, os scripts `theny-approved-sellers.sql`, `theny-vendedor-permissions.sql` e `supabase/theny-synced-orders.sql`. Se os dois primeiros já foram executados, rode apenas o último.
 
+Depois de executar o script, entre no painel com a conta administradora no aparelho que guarda o cardápio e os pedidos atuais. O app envia os dados locais para o banco e passa a atualizá-los nos outros aparelhos. Pedidos novos enviados pelo catálogo público ficam visíveis só para vendedores aprovados. A conta com permissão de visualização não pode concluir, editar ou excluir pedidos.
+
+Se o celular estiver sem internet, o pedido fica salvo localmente e pode ser importado quando uma conta administradora ou editora entrar no painel com conexão.
