@@ -548,9 +548,6 @@ form.addEventListener("submit", (event) => {
   document.querySelector("#customer-name").focus(); notify("Pedido anotado com sucesso!");
 });
 
-document.querySelector("#clear-orders").addEventListener("click", () => {
-  orders = orders.filter((order) => !order.done); persist(STORAGE_KEY, orders); renderOrders();
-});
 document.querySelectorAll(".add-option-form").forEach((addForm) => addForm.addEventListener("submit", (event) => {
   event.preventDefault(); const input = addForm.querySelector(".option-name-input") || addForm.querySelector("input"); const value = input.value.trim();
   const price = Number(addForm.querySelector(".option-price-input")?.value) || 0;
