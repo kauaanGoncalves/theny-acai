@@ -333,13 +333,14 @@ function showOrdersSyncStatus(message, error = false) {
   node.classList.toggle("sync-error", error);
 }
 function shopSettingsSnapshot() {
-  return { products, toppings, sauces, unavailable, toppingPrices, toppingAddons, sauceAddons, pixKey };
+  return { schemaVersion: 2, products, toppings, sauces, unavailable, toppingPrices, toppingAddons, sauceAddons, pixKey };
 }
 function applyShopSettings(payload) {
   if (!payload || typeof payload !== "object") return;
   applyingRemoteSettings = true;
+  const needsLimitDefaults = Number(payload.schemaVersion) < 2;
   if (Array.isArray(payload.products) && payload.products.length) {
-    products = payload.products.map((item) => { const oldDefault = (item.id === "potinho" && item.toppingLimit === 3 && item.sauceLimit === 2) || (item.id === "copinho" && item.toppingLimit === 1 && item.sauceLimit === 1); return { ...item, toppingLimit: oldDefault ? 3 : item.toppingLimit, sauceLimit: oldDefault ? 1 : item.sauceLimit, price: Number(item.price) || 0, icon: item.id === "potinho" ? "🫙" : item.id === "copinho" ? "🥤" : item.icon }; });
+    products = payload.products.map((item) => ({ ...item, toppingLimit: needsLimitDefaults ? 3 : Number(item.toppingLimit ?? 3), sauceLimit: needsLimitDefaults ? 1 : Number(item.sauceLimit ?? 1), price: Number(item.price) || 0, icon: item.id === "potinho" ? "🫙" : item.id === "copinho" ? "🥤" : item.icon }));
     persist(PRODUCTS_KEY, products);
   }
   if (Array.isArray(payload.toppings)) { toppings = payload.toppings.filter((item) => typeof item === "string"); persist(TOPPINGS_KEY, toppings); }
@@ -349,7 +350,7 @@ function applyShopSettings(payload) {
   if (Array.isArray(payload.toppingAddons)) { toppingAddons = payload.toppingAddons.map(normalizeAddon).filter(Boolean); persist(TOPPING_ADDONS_KEY, toppingAddons); }
   if (Array.isArray(payload.sauceAddons)) { sauceAddons = payload.sauceAddons.map(normalizeAddon).filter(Boolean); persist(SAUCE_ADDONS_KEY, sauceAddons); }
   if (typeof payload.pixKey === "string") { pixKey = payload.pixKey; localStorage.setItem(PIX_KEY_STORAGE, pixKey); }
-  const migrated = migrateLegacyPaidToppings(); applyingRemoteSettings = false; if (migrated) scheduleSettingsSync();
+  const migrated = migrateLegacyPaidToppings(); applyingRemoteSettings = false; if (migrated || needsLimitDefaults) scheduleSettingsSync();
   renderProducts();
   makeOptions(document.querySelector("#topping-options"), toppings, "topping");
   makeOptions(document.querySelector("#sauce-options"), sauces, "sauce");
