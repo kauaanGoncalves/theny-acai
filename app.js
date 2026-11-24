@@ -282,7 +282,15 @@ document.querySelector("#seller-signup").addEventListener("click", async () => {
   const { data, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: "https://kauaangoncalves.github.io/theny-acai/" } });
   if (error) { showAuthStatus("Não foi possível solicitar o cadastro. Confira os dados e tente novamente.", true); return; }
   if (data.session) await refreshSellerAccess();
-  else showAuthStatus("Solicitação enviada. Confirme seu e-mail; depois, aguarde a aprovação da responsável.");
+  else { document.querySelector("#seller-resend").hidden = false; showAuthStatus("Solicitação enviada. Confirme seu e-mail; depois, aguarde a aprovação da responsável."); }
+});
+document.querySelector("#seller-resend").addEventListener("click", async () => {
+  const email = document.querySelector("#seller-email").value.trim();
+  if (!email) { showAuthStatus("Informe o e-mail do cadastro.", true); return; }
+  showAuthStatus("Reenviando confirmação…");
+  const { error } = await supabase.auth.resend({ type: "signup", email, options: { emailRedirectTo: "https://kauaangoncalves.github.io/theny-acai/" } });
+  if (error) { showAuthStatus("Não foi possível reenviar. Confira o endereço do site nas configurações de Auth do Supabase.", true); return; }
+  showAuthStatus("Se o cadastro estiver aguardando confirmação, enviaremos um novo e-mail.");
 });
 async function sellerLogout() {
   await supabase.auth.signOut();
