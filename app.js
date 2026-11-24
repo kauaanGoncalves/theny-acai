@@ -36,7 +36,8 @@ let applyingRemoteSettings = false;
 let settingsSyncTimer = null;
 
 function load(key, fallback) { try { const value = JSON.parse(localStorage.getItem(key) || "null"); return Array.isArray(value) ? value : fallback; } catch { return fallback; } }
-function normalizeAddon(item) { if (typeof item === "string") return { name: item, price: 0 }; if (!item || typeof item.name !== "string") return null; return { name: item.name, price: Math.max(0, Number(item.price) || 0) }; }
+function parsePrice(value) { const normalized = String(value ?? "").trim().replace(/\s/g, "").replace(/^R\$/i, "").replace(",", "."); if (!/^\d+(?:\.\d{0,2})?$/.test(normalized)) return NaN; const price = Number(normalized); return Number.isFinite(price) ? price : NaN; }
+function normalizeAddon(item) { if (typeof item === "string") return { name: item, price: 0 }; if (!item || typeof item.name !== "string") return null; const price = parsePrice(item.price); return { name: item.name, price: Number.isFinite(price) ? Math.max(0, price) : 0 }; }
 function persist(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); if ([STOCK_KEY, TOPPINGS_KEY, SAUCES_KEY, PRODUCTS_KEY, TOPPING_PRICES_KEY, TOPPING_ADDONS_KEY, SAUCE_ADDONS_KEY].includes(key)) scheduleSettingsSync(); } catch { notify("Não foi possível salvar neste navegador."); } }
 function product() { return form.elements.product?.value || products[0]?.id || "potinho"; }
 function selected(group) { return [...form.querySelectorAll(`[name="${group}"]:checked`)].map((input) => input.value); }
@@ -170,7 +171,8 @@ function saveAddonList(kind, list) { if (kind === "topping") { toppingAddons = l
 function addAddonOption(kind, name, price) {
   const list = addonList(kind);
   if (list.some((entry) => entry.name.toLocaleLowerCase("pt-BR") === name.toLocaleLowerCase("pt-BR"))) { notify("Esse adicional já existe."); return; }
-  saveAddonList(kind, [...list, { name, price: Math.max(0, Number(price) || 0) }]); renderStock(); renderCustomerAddons(); notify("Adicional cadastrado!");
+  const parsedPrice = parsePrice(price); if (!(parsedPrice > 0)) { notify("Informe um preço válido, como 0,50."); return; }
+  saveAddonList(kind, [...list, { name, price: parsedPrice }]); renderStock(); renderCustomerAddons(); notify("Adicional cadastrado!");
 }
 function renderAddonStock(selector, items, kind) {
   const root = document.querySelector(selector); if (!root) return;
@@ -181,9 +183,9 @@ function renderAddonStock(selector, items, kind) {
     button.setAttribute("aria-label", `${item.name}, ${formatMoney(item.price)}: ` + (isUnavailable(item.name) ? "indisponível, toque para liberar" : "disponível, toque para riscar"));
     button.addEventListener("click", () => toggleUnavailable(item.name)); wrap.append(button);
     const priceForm = document.createElement("form"); priceForm.className = "stock-price-form";
-    const priceInput = document.createElement("input"); priceInput.type = "number"; priceInput.min = "0.01"; priceInput.step = "0.50"; priceInput.value = Number(item.price).toFixed(2); priceInput.setAttribute("aria-label", `Preço de ${item.name}`);
+    const priceInput = document.createElement("input"); priceInput.type = "text"; priceInput.inputMode = "decimal"; priceInput.autocomplete = "off"; priceInput.placeholder = "0,50"; priceInput.value = Number(item.price).toFixed(2).replace(".", ","); priceInput.setAttribute("aria-label", `Preço de ${item.name}`);
     const save = document.createElement("button"); save.type = "submit"; save.textContent = "Salvar"; priceForm.append(priceInput, save);
-    priceForm.addEventListener("submit", (event) => { event.preventDefault(); const price = Number(priceInput.value); if (!(price > 0)) { notify("Informe um preço maior que zero."); return; } saveAddonList(kind, addonList(kind).map((entry) => entry.name === item.name ? { ...entry, price } : entry)); renderStock(); renderCustomerAddons(); updateOrderPrice(); notify("Preço atualizado."); }); wrap.append(priceForm);
+    priceForm.addEventListener("submit", (event) => { event.preventDefault(); const price = parsePrice(priceInput.value); if (!(price > 0)) { notify("Informe um preço válido, como 0,50."); return; } saveAddonList(kind, addonList(kind).map((entry) => entry.name === item.name ? { ...entry, price } : entry)); renderStock(); renderCustomerAddons(); updateOrderPrice(); notify("Preço atualizado."); }); wrap.append(priceForm);
     const remove = document.createElement("button"); remove.type = "button"; remove.className = "delete-option"; remove.textContent = "×"; remove.setAttribute("aria-label", `Excluir adicional ${item.name}`);
     remove.addEventListener("click", () => { saveAddonList(kind, addonList(kind).filter((entry) => entry.name !== item.name)); renderStock(); renderCustomerAddons(); updateOrderPrice(); }); wrap.append(remove);
     return wrap;
@@ -783,9 +785,9 @@ document.querySelectorAll(".add-option-form").forEach((addForm) => addForm.addEv
   if (value) { addOption(addForm.dataset.kind, value); addForm.reset(); }
 }));
 document.querySelectorAll(".addon-form").forEach((addForm) => addForm.addEventListener("submit", (event) => {
-  event.preventDefault(); const name = addForm.querySelector(".addon-name-input").value.trim(); const price = Number(addForm.querySelector(".addon-price-input").value);
-  if (!name) return; if (!(price > 0)) { notify("Informe um preço maior que zero."); return; }
-  addAddonOption(addForm.dataset.kind, name, price); addForm.reset(); addForm.querySelector(".addon-price-input").value = "0.50";
+  event.preventDefault(); const name = addForm.querySelector(".addon-name-input").value.trim(); const price = parsePrice(addForm.querySelector(".addon-price-input").value);
+  if (!name) return; if (!(price > 0)) { notify("Informe um preço válido, como 0,50."); return; }
+  addAddonOption(addForm.dataset.kind, name, price); addForm.reset(); addForm.querySelector(".addon-price-input").value = "0,50";
 }));
 document.querySelector("#add-product-form").addEventListener("submit", (event) => {
   event.preventDefault(); const name = document.querySelector("#new-product-name").value.trim();

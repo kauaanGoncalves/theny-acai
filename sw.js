@@ -1,5 +1,5 @@
-const CACHE = "theny-acai-static-v23";
-const ASSETS = ["./", "./index.html", "./style.css?v=addons1", "./app.js?v=15", "./manifest.webmanifest", "./icon.svg", "./assets/theny-logo.png"];
+const CACHE = "theny-acai-static-v24";
+const ASSETS = ["./", "./index.html", "./style.css?v=responsive2", "./app.js?v=16", "./manifest.webmanifest", "./icon.svg", "./assets/theny-logo.png"];
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(ASSETS)));
   self.skipWaiting();
