@@ -22,7 +22,6 @@ let sauces = load(SAUCES_KEY, DEFAULT_SAUCES);
 let toppingPrices = (() => { try { return JSON.parse(localStorage.getItem(TOPPING_PRICES_KEY) || "{}"); } catch { return {}; } })();
 let products = load(PRODUCTS_KEY, DEFAULT_PRODUCTS).map((item) => ({ ...item, price: Number.isFinite(Number(item.price)) ? Number(item.price) : item.id === "copinho" ? 5 : item.id === "potinho" ? 10 : 0, icon: item.id === "potinho" ? "🫙" : item.id === "copinho" ? "🥤" : item.icon, flavors: undefined }));
 let pixKey = localStorage.getItem(PIX_KEY_STORAGE) || "13997891003";
-persist(PRODUCTS_KEY, products);
 let toastTimer;
 let ordersChannel = null;
 let shopSettingsChannel = null;
