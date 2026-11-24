@@ -6,7 +6,7 @@
   <link rel="manifest" href="manifest.webmanifest"><link rel="icon" href="icon.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@1,800;1,900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css"><script>window.addEventListener("error",function(event){var box=document.getElementById("boot-error");if(box){box.hidden=false;box.textContent="Não foi possível abrir o catálogo: "+(event.message||"erro ao carregar arquivos")+". Atualize a página."}});</script><script type="module" src="app.js?v=7"></script>
+  <link rel="stylesheet" href="style.css"><script>window.addEventListener("error",function(event){var box=document.getElementById("boot-error");if(box){box.hidden=false;box.textContent="Não foi possível abrir o catálogo: "+(event.message||"erro ao carregar arquivos")+". Atualize a página."}});</script><script type="module" src="app.js?v=8"></script>
 </head>
 <body>
   <main class="page">
@@ -43,13 +43,13 @@
         <p class="eyebrow">ACESSO RESTRITO</p><h2>Painel da vendedora</h2>
         <p class="auth-copy">Entre com uma conta aprovada. Novos cadastros aguardam aprovação da responsável.</p>
         <form id="seller-login-form" class="seller-login-form">
-          <label for="seller-email">E-mail</label><input id="seller-email" type="email" autocomplete="username" required>
+          <label for="seller-email">E-mail</label><input id="seller-email" type="email" autocomplete="username" required><label id="seller-signup-name-label" for="seller-signup-name" hidden>Nome completo ou como quer ser identificada</label><input id="seller-signup-name" type="text" maxlength="100" autocomplete="name" placeholder="Seu nome" hidden>
           <label for="seller-password">Senha</label><input id="seller-password" type="password" autocomplete="current-password" minlength="6" required>
-          <div class="auth-actions"><button type="submit">Entrar</button><button id="seller-signup" type="button">Solicitar cadastro</button></div><button id="seller-forgot-password" class="text-action" type="button">Esqueci minha senha</button>
+          <div class="auth-actions"><button type="submit">Entrar</button><button id="seller-signup" type="button">Solicitar cadastro</button></div><button id="seller-cancel-signup" class="text-action" type="button" hidden>Cancelar cadastro</button><button id="seller-forgot-password" class="text-action" type="button">Esqueci minha senha</button><button id="seller-passkey-login" class="passkey-button" type="button">Entrar com biometria ou PIN</button>
         </form>
         <form id="seller-reset-form" class="seller-login-form" hidden><label for="seller-new-password">Nova senha</label><input id="seller-new-password" type="password" autocomplete="new-password" minlength="6" required><label for="seller-new-password-confirm">Confirme a nova senha</label><input id="seller-new-password-confirm" type="password" autocomplete="new-password" minlength="6" required><button type="submit">Salvar nova senha</button></form>
-        <p id="seller-auth-status" class="seller-auth-status" role="status" aria-live="polite"></p><button id="seller-resend" class="seller-logout" type="button" hidden>Reenviar e-mail de confirmação</button>
-        <button id="seller-logout" class="seller-logout" type="button" hidden>Sair da conta</button>
+        <form id="seller-name-form" class="seller-login-form" hidden><label for="seller-full-name">Nome completo ou como quer ser identificada</label><input id="seller-full-name" type="text" maxlength="100" autocomplete="name" required><button type="submit">Salvar meu nome</button></form><p id="seller-auth-status" class="seller-auth-status" role="status" aria-live="polite"></p><button id="seller-resend" class="seller-logout" type="button" hidden>Reenviar e-mail de confirmação</button>
+        <button id="seller-passkey-register" class="seller-logout" type="button" hidden>Ativar biometria neste aparelho</button><button id="seller-logout" class="seller-logout" type="button" hidden>Sair da conta</button>
       </section>
       <div id="seller-content" hidden>
       <div class="vendor-title"><a class="back-link" href="#top">← Voltar ao catálogo</a><button id="seller-logout-panel" class="seller-logout-panel" type="button">Sair</button><p class="eyebrow">ÁREA DE ORGANIZAÇÃO</p><h2>Painel da vendedora</h2><p>Controle o que está disponível e acompanhe os pedidos deste aparelho.</p></div>
