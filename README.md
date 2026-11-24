@@ -16,6 +16,6 @@ Os arquivos são estáticos e podem ser publicados em um serviço de hospedagem 
 
 Pedidos, histórico, cardápio, estoque, preços e chave Pix podem ser compartilhados pelo Supabase. Para ativar a sincronização, execute no SQL Editor do Supabase, nesta ordem, os scripts `theny-approved-sellers.sql`, `theny-vendedor-permissions.sql` e `supabase/theny-synced-orders.sql`. Se os dois primeiros já foram executados, rode apenas o último.
 
-Depois de executar o script, entre no painel com a conta administradora no aparelho que guarda o cardápio e os pedidos atuais. O app envia os dados locais para o banco e passa a atualizá-los nos outros aparelhos. Pedidos novos enviados pelo catálogo público ficam visíveis só para vendedores aprovados. A conta com permissão de visualização não pode concluir, editar ou excluir pedidos.
+Depois de executar o script, entre no painel com a conta administradora no aparelho que guarda o cardápio e os pedidos atuais. Esse primeiro acesso importa os dados locais; em seguida, cardápio, estoque e pedidos passam a atualizar nos outros aparelhos. Pedidos novos enviados pelo catálogo público ficam visíveis só para vendedores aprovados. A conta com permissão de visualização não pode concluir, editar ou excluir pedidos.
 
-Se o celular estiver sem internet, o pedido fica salvo localmente e pode ser importado quando uma conta administradora ou editora entrar no painel com conexão.
+Se um pedido for feito sem conexão, ele fica na fila local e o app tenta enviá-lo assim que a conexão voltar. Os dados antigos deste aparelho precisam de uma conexão e do primeiro acesso de uma conta administradora ou editora para serem importados.
