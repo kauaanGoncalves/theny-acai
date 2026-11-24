@@ -338,7 +338,7 @@ function shopSettingsSnapshot() {
 function applyShopSettings(payload) {
   if (!payload || typeof payload !== "object") return;
   applyingRemoteSettings = true;
-  const needsLimitDefaults = Number(payload.schemaVersion) < 2;
+  const needsLimitDefaults = Number(payload.schemaVersion || 0) < 2;
   if (Array.isArray(payload.products) && payload.products.length) {
     products = payload.products.map((item) => ({ ...item, toppingLimit: needsLimitDefaults ? 3 : Number(item.toppingLimit ?? 3), sauceLimit: needsLimitDefaults ? 1 : Number(item.sauceLimit ?? 1), price: Number(item.price) || 0, icon: item.id === "potinho" ? "🫙" : item.id === "copinho" ? "🥤" : item.icon }));
     persist(PRODUCTS_KEY, products);
