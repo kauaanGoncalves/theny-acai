@@ -1,3 +1,5 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+const supabase = createClient("https://wyvszpgwqmwdkqaqhsed.supabase.co", "sb_publishable_dNOgfbzU4NLsUYZE0tIVIg_ZEMIHC8z");
 const STORAGE_KEY = "theny-acai-orders-v1";
 const STOCK_KEY = "theny-acai-stock-v1";
 const TOPPINGS_KEY = "theny-acai-toppings-v1";
@@ -191,6 +193,110 @@ function renderOrders() {
   document.querySelector("#clear-orders").hidden = !orders.some((order) => order.done);
 }
 
+let authUser = null;
+let sellerApproved = false;
+let sellerIsOwner = false;
+let accessCheckId = 0;
+
+function showAuthStatus(message, error = false) {
+  const status = document.querySelector("#seller-auth-status");
+  status.textContent = message;
+  status.classList.toggle("error", error);
+}
+function setAuthView({ signedIn = false, approved = false, owner = false } = {}) {
+  document.querySelector("#seller-login-form").hidden = signedIn;
+  document.querySelector("#seller-logout").hidden = !signedIn;
+  document.querySelector("#seller-logout-panel").hidden = !signedIn;
+  document.querySelector("#seller-content").hidden = !approved;
+  document.querySelector("#seller-approvals").hidden = !owner;
+}
+async function refreshSellerAccess() {
+  const checkId = ++accessCheckId;
+  const { data: { session } } = await supabase.auth.getSession();
+  if (checkId !== accessCheckId) return;
+  authUser = session?.user || null;
+  sellerApproved = false; sellerIsOwner = false;
+  if (!authUser) {
+    setAuthView();
+    showAuthStatus("Entre com uma conta aprovada ou solicite seu cadastro.");
+    return;
+  }
+  setAuthView({ signedIn: true });
+  showAuthStatus("Conferindo a aprovação da sua conta…");
+  const { data, error } = await supabase.from("seller_access")
+    .select("role, approved_at").eq("user_id", authUser.id).maybeSingle();
+  if (checkId !== accessCheckId) return;
+  if (error) {
+    showAuthStatus("Não foi possível validar o acesso. As regras do Supabase precisam ser instaladas.", true);
+    return;
+  }
+  if (!data?.approved_at) {
+    showAuthStatus("Cadastro recebido. A responsável precisa aprovar seu acesso.");
+    return;
+  }
+  sellerApproved = true; sellerIsOwner = data.role === "owner";
+  setAuthView({ signedIn: true, approved: true, owner: sellerIsOwner });
+  showAuthStatus(sellerIsOwner ? "Conta administradora conectada." : "Conta aprovada.");
+  renderStock(); renderOrders();
+  if (sellerIsOwner) await renderSellerApprovals();
+}
+async function renderSellerApprovals() {
+  const root = document.querySelector("#seller-approval-list");
+  const { data, error } = await supabase.from("seller_access")
+    .select("user_id, email, created_at").eq("role", "seller").is("approved_at", null).order("created_at");
+  root.replaceChildren();
+  if (error) { root.textContent = "Não foi possível carregar os cadastros pendentes."; return; }
+  if (!data?.length) { root.textContent = "Nenhum cadastro aguardando aprovação."; return; }
+  data.forEach((seller) => {
+    const row = document.createElement("div"); row.className = "seller-approval-row";
+    const email = document.createElement("span"); email.textContent = seller.email;
+    const approve = document.createElement("button"); approve.type = "button"; approve.textContent = "Aprovar";
+    approve.addEventListener("click", async () => {
+      approve.disabled = true;
+      const { error: updateError } = await supabase.from("seller_access")
+        .update({ approved_at: new Date().toISOString() }).eq("user_id", seller.user_id);
+      if (updateError) { showAuthStatus("Não foi possível aprovar esse cadastro.", true); approve.disabled = false; return; }
+      notify("Vendedora aprovada."); await renderSellerApprovals();
+    });
+    row.append(email, approve); root.append(row);
+  });
+}
+async function sellerLogin(event) {
+  event.preventDefault();
+  const email = document.querySelector("#seller-email").value.trim();
+  const password = document.querySelector("#seller-password").value;
+  showAuthStatus("Entrando…");
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) { showAuthStatus("Não foi possível entrar. Confira e-mail e senha.", true); return; }
+  await refreshSellerAccess();
+}
+document.querySelector("#seller-login-form").addEventListener("submit", sellerLogin);
+document.querySelector("#seller-signup").addEventListener("click", async () => {
+  const email = document.querySelector("#seller-email").value.trim();
+  const password = document.querySelector("#seller-password").value;
+  if (!email || password.length < 6) {
+    showAuthStatus("Informe o e-mail e uma senha com pelo menos 6 caracteres.", true);
+    return;
+  }
+  showAuthStatus("Enviando solicitação…");
+  const { data, error } = await supabase.auth.signUp({ email, password });
+  if (error) { showAuthStatus("Não foi possível solicitar o cadastro. Confira os dados e tente novamente.", true); return; }
+  if (data.session) await refreshSellerAccess();
+  else showAuthStatus("Solicitação enviada. Confirme seu e-mail; depois, aguarde a aprovação da responsável.");
+});
+async function sellerLogout() {
+  await supabase.auth.signOut();
+  authUser = null; sellerApproved = false; sellerIsOwner = false;
+  setAuthView(); showAuthStatus("Você saiu da conta.");
+}
+document.querySelector("#seller-logout").addEventListener("click", sellerLogout);
+document.querySelector("#seller-logout-panel").addEventListener("click", sellerLogout);
+supabase.auth.onAuthStateChange((event) => {
+  if (event === "SIGNED_IN" || event === "SIGNED_OUT" || event === "TOKEN_REFRESHED") {
+    window.setTimeout(() => { if (location.hash === "#painel") refreshSellerAccess(); }, 0);
+  }
+});
+
 function renderRoute() {
   const vendor = location.hash === "#painel";
   document.body.classList.toggle("vendor-mode", vendor);
@@ -199,7 +305,7 @@ function renderRoute() {
   document.querySelector(".hero-copy").hidden = vendor;
   document.querySelector(".open-badge").hidden = vendor;
   document.querySelector(".footer").hidden = vendor;
-  if (vendor) { renderStock(); renderOrders(); }
+  if (vendor) { refreshSellerAccess(); }
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
