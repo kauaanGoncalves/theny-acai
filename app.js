@@ -5,18 +5,20 @@ const STOCK_KEY = "theny-acai-stock-v1";
 const TOPPINGS_KEY = "theny-acai-toppings-v1";
 const SAUCES_KEY = "theny-acai-sauces-v1";
 const PRODUCTS_KEY = "theny-acai-products-v1";
+const PIX_KEY_STORAGE = "theny-acai-pix-key-v1";
 const DEFAULT_TOPPINGS = ["Leite em Pó", "Confete", "Chocobol", "Granulado", "Jujuba", "Granola", "Paçoca"];
 const DEFAULT_SAUCES = ["Morango", "Chocolate", "Leite Condensado"];
-const DEFAULT_PRODUCTS = [{ id: "potinho", name: "Potinho", icon: "🍇", toppingLimit: 3, sauceLimit: 2 }, { id: "copinho", name: "Copinho", icon: "🥣", toppingLimit: 1, sauceLimit: 1, flavors: ["Açaí", "Creme"] }];
+const DEFAULT_PRODUCTS = [{ id: "potinho", name: "Potinho", icon: "🫙", toppingLimit: 3, sauceLimit: 2 }, { id: "copinho", name: "Copinho", icon: "🥤", toppingLimit: 1, sauceLimit: 1 }];
 const form = document.querySelector("#order-form");
-const flavorPanel = document.querySelector("#flavor-panel");
 const ordersRoot = document.querySelector("#orders-list");
 const toast = document.querySelector("#toast");
 let orders = load(STORAGE_KEY, []);
 let unavailable = load(STOCK_KEY, []);
 let toppings = load(TOPPINGS_KEY, DEFAULT_TOPPINGS);
 let sauces = load(SAUCES_KEY, DEFAULT_SAUCES);
-let products = load(PRODUCTS_KEY, DEFAULT_PRODUCTS);
+let products = load(PRODUCTS_KEY, DEFAULT_PRODUCTS).map((item) => ({ ...item, icon: item.id === "potinho" ? "🫙" : item.id === "copinho" ? "🥤" : item.icon, flavors: undefined }));
+let pixKey = localStorage.getItem(PIX_KEY_STORAGE) || "13997891003";
+persist(PRODUCTS_KEY, products);
 let toastTimer;
 
 function load(key, fallback) { try { const value = JSON.parse(localStorage.getItem(key) || "null"); return Array.isArray(value) ? value : fallback; } catch { return fallback; } }
@@ -60,17 +62,6 @@ function enforceLimit(group) {
 function updateProduct() {
   const current = product();
   document.querySelectorAll(".product-option").forEach((card) => card.classList.toggle("selected", card.dataset.product === current));
-  const selectedProduct = products.find((item) => item.id === current) || products[0];
-  flavorPanel.hidden = !selectedProduct?.flavors?.length;
-  if (selectedProduct?.flavors?.length) {
-    const flavorChoices = flavorPanel.querySelector(".choice-row");
-    flavorChoices.replaceChildren(...selectedProduct.flavors.map((flavor, index) => {
-      const label = document.createElement("label"); label.className = "choice";
-      const input = document.createElement("input"); input.type = "radio"; input.name = "flavor"; input.value = flavor; input.checked = index === 0;
-      const check = document.createElement("span"); check.className = "checkmark";
-      label.append(input, check, document.createTextNode(flavor)); return label;
-    }));
-  }
   enforceLimit("topping"); enforceLimit("sauce");
 }
 
@@ -107,26 +98,28 @@ function renderStock() {
     root.replaceChildren(...items.map((item) => {
       const wrap = document.createElement("span"); wrap.className = "stock-item-wrap";
       const button = document.createElement("button"); button.type = "button";
-      button.className = `stock-chip${isUnavailable(item) ? " unavailable" : ""}`;
+      button.className = "stock-chip" + (isUnavailable(item) ? " unavailable" : "");
       button.textContent = item; button.setAttribute("aria-pressed", String(isUnavailable(item)));
-      button.setAttribute("aria-label", `${item}: ${isUnavailable(item) ? "indisponível, toque para liberar" : "disponível, toque para riscar"}`);
+      button.setAttribute("aria-label", item + ": " + (isUnavailable(item) ? "indisponível, toque para liberar" : "disponível, toque para riscar"));
       button.addEventListener("click", () => toggleUnavailable(item)); wrap.append(button);
       if (!(selector === "#topping-stock" ? DEFAULT_TOPPINGS : DEFAULT_SAUCES).includes(item)) {
         const remove = document.createElement("button"); remove.type = "button"; remove.className = "delete-option"; remove.textContent = "×";
-        remove.setAttribute("aria-label", `Excluir ${item}`); remove.addEventListener("click", () => deleteOption(selector === "#topping-stock" ? "topping" : "sauce", item)); wrap.append(remove);
+        remove.setAttribute("aria-label", "Excluir " + item); remove.addEventListener("click", () => deleteOption(selector === "#topping-stock" ? "topping" : "sauce", item)); wrap.append(remove);
       }
       return wrap;
     }));
   });
   const productRoot = document.querySelector("#product-stock");
   productRoot.replaceChildren(...products.map((item) => {
-    const chip = document.createElement("span"); chip.className = "stock-chip product-chip"; chip.textContent = `${item.icon || "🍧"} ${item.name}`;
+    const chip = document.createElement("span"); chip.className = "stock-chip product-chip"; chip.textContent = (item.icon || "🍧") + " " + item.name;
     if (item.id !== "potinho" && item.id !== "copinho") {
-      const remove = document.createElement("button"); remove.type = "button"; remove.className = "delete-product"; remove.textContent = "×"; remove.setAttribute("aria-label", `Excluir ${item.name}`);
+      const remove = document.createElement("button"); remove.type = "button"; remove.className = "delete-product"; remove.textContent = "×"; remove.setAttribute("aria-label", "Excluir " + item.name);
       remove.addEventListener("click", () => deleteProduct(item.id)); chip.append(remove);
     }
     return chip;
   }));
+  renderProductLimits();
+  renderPix();
 }
 
 function addOption(kind, value) {
@@ -144,6 +137,41 @@ function deleteOption(kind, value) {
   unavailable = unavailable.filter((item) => item !== value); persist(STOCK_KEY, unavailable);
   renderStock(); makeOptions(document.querySelector(kind === "topping" ? "#topping-options" : "#sauce-options"), listFor(kind), kind); enforceLimit(kind);
 }
+function renderProductLimits() {
+  const root = document.querySelector("#product-limits");
+  root.replaceChildren(...products.map((item) => {
+    const editForm = document.createElement("form"); editForm.className = "product-limit-form";
+    const title = document.createElement("strong"); title.textContent = item.name;
+    const toppingLabel = document.createElement("label"); toppingLabel.textContent = "Complementos";
+    const toppingInput = document.createElement("input"); toppingInput.type = "number"; toppingInput.min = "0"; toppingInput.max = "10"; toppingInput.value = String(item.toppingLimit); toppingInput.setAttribute("aria-label", "Limite de complementos para " + item.name);
+    const sauceLabel = document.createElement("label"); sauceLabel.textContent = "Caldas";
+    const sauceInput = document.createElement("input"); sauceInput.type = "number"; sauceInput.min = "0"; sauceInput.max = "10"; sauceInput.value = String(item.sauceLimit); sauceInput.setAttribute("aria-label", "Limite de caldas para " + item.name);
+    const save = document.createElement("button"); save.type = "submit"; save.textContent = "Salvar";
+    editForm.append(title, toppingLabel, toppingInput, sauceLabel, sauceInput, save);
+    editForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const toppingLimit = Number(toppingInput.value), sauceLimit = Number(sauceInput.value);
+      if (!Number.isInteger(toppingLimit) || !Number.isInteger(sauceLimit) || toppingLimit < 0 || sauceLimit < 0 || toppingLimit > 10 || sauceLimit > 10) { notify("Use limites entre 0 e 10."); return; }
+      products = products.map((productItem) => productItem.id === item.id ? { ...productItem, toppingLimit, sauceLimit } : productItem);
+      persist(PRODUCTS_KEY, products); renderProducts(); updateProduct(); renderStock(); notify("Limites atualizados.");
+    });
+    return editForm;
+  }));
+}
+function renderPix() {
+  const display = document.querySelector("#pix-key-display");
+  const input = document.querySelector("#pix-key-input");
+  if (display) display.textContent = pixKey || "Chave não configurada";
+  if (input && document.activeElement !== input) input.value = pixKey;
+}
+document.querySelector("#pix-form").addEventListener("submit", (event) => {
+  event.preventDefault(); pixKey = document.querySelector("#pix-key-input").value.trim();
+  localStorage.setItem(PIX_KEY_STORAGE, pixKey); renderPix(); notify("Chave Pix atualizada neste aparelho.");
+});
+document.querySelector("#copy-pix").addEventListener("click", async () => {
+  try { await navigator.clipboard.writeText(pixKey); notify("Chave Pix copiada."); }
+  catch { notify("Não foi possível copiar. Anote a chave exibida no rodapé."); }
+});
 function deleteProduct(id) {
   products = products.filter((item) => item.id !== id); persist(PRODUCTS_KEY, products);
   renderProducts(); updateProduct(); renderStock();
@@ -169,7 +197,7 @@ function makeOrderCard(order) {
   remove.addEventListener("click", () => { orders = orders.filter((item) => item.id !== order.id); persist(STORAGE_KEY, orders); renderOrders(); });
   top.append(info, remove);
   const productTag = document.createElement("span"); productTag.className = "order-product";
-  productTag.textContent = `${order.productIcon || "🍧"} ${order.productName || order.product}${order.flavor ? ` · ${order.flavor}` : ""}`;
+  productTag.textContent = `${order.productIcon || "🍧"} ${order.productName || order.product}`;
   const detail = document.createElement("p"); detail.className = "order-detail";
   detail.textContent = `Complementos: ${order.toppings.join(", ") || "nenhum"} · Caldas: ${order.sauces.join(", ") || "nenhuma"}`;
   card.append(top, productTag, detail);
@@ -205,6 +233,7 @@ function showAuthStatus(message, error = false) {
 }
 function setAuthView({ signedIn = false, approved = false, owner = false } = {}) {
   document.querySelector("#seller-login-form").hidden = signedIn;
+  document.querySelector("#owner-settings").hidden = !owner;
   document.querySelector("#seller-logout").hidden = !signedIn;
   document.querySelector("#seller-logout-panel").hidden = !signedIn;
   document.querySelector("#seller-content").hidden = !approved;
@@ -271,6 +300,26 @@ async function sellerLogin(event) {
   await refreshSellerAccess();
 }
 document.querySelector("#seller-login-form").addEventListener("submit", sellerLogin);
+document.querySelector("#seller-forgot-password").addEventListener("click", async () => {
+  const email = document.querySelector("#seller-email").value.trim();
+  if (!email) { showAuthStatus("Digite seu e-mail para receber o link de redefinição.", true); document.querySelector("#seller-email").focus(); return; }
+  showAuthStatus("Enviando link de redefinição…");
+  const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: "https://kauaangoncalves.github.io/theny-acai/" });
+  if (error) { showAuthStatus("Não foi possível enviar o e-mail. Confira a configuração de redirecionamento do Supabase.", true); return; }
+  showAuthStatus("Se houver uma conta para esse e-mail, enviaremos um link para redefinir a senha.");
+});
+document.querySelector("#seller-reset-form").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const password = document.querySelector("#seller-new-password").value;
+  const confirmation = document.querySelector("#seller-new-password-confirm").value;
+  if (password.length < 6 || password !== confirmation) { showAuthStatus("As senhas precisam ter pelo menos 6 caracteres e ser iguais.", true); return; }
+  const { error } = await supabase.auth.updateUser({ password });
+  if (error) { showAuthStatus("Não foi possível atualizar a senha. Solicite um novo link.", true); return; }
+  document.querySelector("#seller-reset-form").hidden = true;
+  document.querySelector("#seller-login-form").hidden = true;
+  showAuthStatus("Senha atualizada. Você já pode acessar o painel.");
+  await refreshSellerAccess();
+});
 document.querySelector("#seller-signup").addEventListener("click", async () => {
   const email = document.querySelector("#seller-email").value.trim();
   const password = document.querySelector("#seller-password").value;
@@ -300,7 +349,15 @@ async function sellerLogout() {
 document.querySelector("#seller-logout").addEventListener("click", sellerLogout);
 document.querySelector("#seller-logout-panel").addEventListener("click", sellerLogout);
 supabase.auth.onAuthStateChange((event) => {
-  if (event === "SIGNED_IN" || event === "SIGNED_OUT" || event === "TOKEN_REFRESHED") {
+  if (event === "PASSWORD_RECOVERY") {
+    window.setTimeout(() => {
+      if (location.hash !== "#painel") location.hash = "#painel";
+      document.querySelector("#seller-login-form").hidden = true;
+      document.querySelector("#seller-reset-form").hidden = false;
+      document.querySelector("#seller-resend").hidden = true;
+      showAuthStatus("Digite e confirme sua nova senha.");
+    }, 0);
+  } else if (event === "SIGNED_IN" || event === "SIGNED_OUT" || event === "TOKEN_REFRESHED") {
     window.setTimeout(() => { if (location.hash === "#painel") refreshSellerAccess(); }, 0);
   }
 });
@@ -324,7 +381,7 @@ form.addEventListener("submit", (event) => {
   if (!name) { document.querySelector("#customer-name").focus(); return; }
   const chosenProduct = products.find((item) => item.id === product());
   orders.unshift({ id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`, name,
-    product: chosenProduct.id, productName: chosenProduct.name, productIcon: chosenProduct.icon, flavor: chosenProduct.flavors?.length ? form.elements.flavor.value : "",
+    product: chosenProduct.id, productName: chosenProduct.name, productIcon: chosenProduct.icon,
     toppings: selected("topping"), sauces: selected("sauce"), note: document.querySelector("#order-note").value.trim(), createdAt: new Date().toISOString(), done: false });
   persist(STORAGE_KEY, orders); renderOrders(); form.reset(); form.elements.product.value = "potinho"; updateProduct();
   document.querySelector("#customer-name").focus(); notify("Pedido anotado com sucesso!");
