@@ -22,9 +22,16 @@ let products = load(PRODUCTS_KEY, DEFAULT_PRODUCTS).map((item) => ({ ...item, pr
 let pixKey = localStorage.getItem(PIX_KEY_STORAGE) || "13997891003";
 persist(PRODUCTS_KEY, products);
 let toastTimer;
+let ordersChannel = null;
+let shopSettingsChannel = null;
+let syncInFlight = false;
+let syncRefreshQueued = false;
+let shopSettingsReady = false;
+let applyingRemoteSettings = false;
+let settingsSyncTimer = null;
 
 function load(key, fallback) { try { const value = JSON.parse(localStorage.getItem(key) || "null"); return Array.isArray(value) ? value : fallback; } catch { return fallback; } }
-function persist(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch { notify("Não foi possível salvar neste navegador."); } }
+function persist(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); if ([STOCK_KEY, TOPPINGS_KEY, SAUCES_KEY, PRODUCTS_KEY, TOPPING_PRICES_KEY].includes(key)) scheduleSettingsSync(); } catch { notify("Não foi possível salvar neste navegador."); } }
 function product() { return form.elements.product?.value || products[0]?.id || "potinho"; }
 function selected(group) { return [...form.querySelectorAll(`[name="${group}"]:checked`)].map((input) => input.value); }
 function isUnavailable(item) { return unavailable.includes(item); }
@@ -179,7 +186,7 @@ function renderPix() {
 }
 document.querySelector("#pix-form").addEventListener("submit", (event) => {
   event.preventDefault(); pixKey = document.querySelector("#pix-key-input").value.trim();
-  localStorage.setItem(PIX_KEY_STORAGE, pixKey); renderPix(); notify("Chave Pix atualizada neste aparelho.");
+  localStorage.setItem(PIX_KEY_STORAGE, pixKey); scheduleSettingsSync(); renderPix(); notify("Chave Pix salva e enviada para sincronização.");
 });
 document.querySelector("#copy-pix").addEventListener("click", async () => {
   try { await navigator.clipboard.writeText(pixKey); notify("Chave Pix copiada."); }
@@ -209,7 +216,7 @@ function makeOrderCard(order) {
   else {
     const remove = document.createElement("button"); remove.className = "remove-order"; remove.type = "button"; remove.textContent = "×";
     remove.setAttribute("aria-label", `Excluir pedido de ${order.name}`);
-    remove.addEventListener("click", () => { orders = orders.filter((item) => item.id !== order.id); persist(STORAGE_KEY, orders); renderOrders(); });
+    remove.addEventListener("click", () => { void deleteCloudOrder(order); });
     top.append(info, remove);
   }
   const productTag = document.createElement("span"); productTag.className = "order-product";
@@ -224,11 +231,11 @@ function makeOrderCard(order) {
   if (currentRole !== "orders_viewer") {
     if (!order.done) {
       const done = document.createElement("button"); done.className = "status-button"; done.type = "button"; done.textContent = "✓ Marcar como realizado";
-      done.addEventListener("click", () => { orders = orders.map((item) => item.id === order.id ? { ...item, done: true, doneAt: new Date().toISOString(), servedBy: currentSellerName || authUser?.email || "vendedora" } : item); persist(STORAGE_KEY, orders); renderOrders(); });
+      done.addEventListener("click", async () => { const doneAt = new Date().toISOString(); const servedBy = currentSellerName || authUser?.email || "vendedora"; if (!await saveCloudOrderState(order, { done: true, done_at: doneAt, served_by: servedBy })) return; orders = orders.map((item) => item.id === order.id ? { ...item, done: true, doneAt, servedBy } : item); persist(STORAGE_KEY, orders); renderOrders(); });
       card.append(done);
     } else {
       const undo = document.createElement("button"); undo.className = "status-button"; undo.type = "button"; undo.textContent = "↶ Reabrir pedido";
-      undo.addEventListener("click", () => { orders = orders.map((item) => { if (item.id !== order.id) return item; const reopened = { ...item, done: false }; delete reopened.doneAt; delete reopened.servedBy; return reopened; }); persist(STORAGE_KEY, orders); renderOrders(); });
+      undo.addEventListener("click", async () => { if (!await saveCloudOrderState(order, { done: false, done_at: null, served_by: null })) return; orders = orders.map((item) => { if (item.id !== order.id) return item; const reopened = { ...item, done: false }; delete reopened.doneAt; delete reopened.servedBy; return reopened; }); persist(STORAGE_KEY, orders); renderOrders(); });
       card.append(undo);
     }
   }
@@ -266,6 +273,136 @@ let currentSellerName = "";
 let signupMode = false;
 let accessCheckId = 0;
 
+
+function showOrdersSyncStatus(message, error = false) {
+  const node = document.querySelector("#orders-sync-status");
+  if (!node) return;
+  node.textContent = message;
+  node.classList.toggle("sync-error", error);
+}
+function shopSettingsSnapshot() {
+  return { products, toppings, sauces, unavailable, toppingPrices, pixKey };
+}
+function applyShopSettings(payload) {
+  if (!payload || typeof payload !== "object") return;
+  applyingRemoteSettings = true;
+  if (Array.isArray(payload.products) && payload.products.length) {
+    products = payload.products.map((item) => ({ ...item, price: Number(item.price) || 0, icon: item.id === "potinho" ? "🫙" : item.id === "copinho" ? "🥤" : item.icon }));
+    persist(PRODUCTS_KEY, products);
+  }
+  if (Array.isArray(payload.toppings)) { toppings = payload.toppings.filter((item) => typeof item === "string"); persist(TOPPINGS_KEY, toppings); }
+  if (Array.isArray(payload.sauces)) { sauces = payload.sauces.filter((item) => typeof item === "string"); persist(SAUCES_KEY, sauces); }
+  if (Array.isArray(payload.unavailable)) { unavailable = payload.unavailable.filter((item) => typeof item === "string"); persist(STOCK_KEY, unavailable); }
+  if (payload.toppingPrices && typeof payload.toppingPrices === "object" && !Array.isArray(payload.toppingPrices)) { toppingPrices = payload.toppingPrices; persist(TOPPING_PRICES_KEY, toppingPrices); }
+  if (typeof payload.pixKey === "string") { pixKey = payload.pixKey; localStorage.setItem(PIX_KEY_STORAGE, pixKey); }
+  applyingRemoteSettings = false;
+  renderProducts();
+  makeOptions(document.querySelector("#topping-options"), toppings, "topping");
+  makeOptions(document.querySelector("#sauce-options"), sauces, "sauce");
+  updateProduct();
+  updateOrderPrice();
+  renderStock();
+  renderOrders();
+}
+function scheduleSettingsSync() {
+  if (applyingRemoteSettings || !shopSettingsReady || !sellerApproved || !["owner", "editor"].includes(currentRole)) return;
+  window.clearTimeout(settingsSyncTimer);
+  settingsSyncTimer = window.setTimeout(syncShopSettingsToCloud, 350);
+}
+async function syncShopSettingsToCloud() {
+  if (!sellerApproved || !["owner", "editor"].includes(currentRole)) return;
+  const { error } = await supabase.from("theny_shop_state").upsert({ id: "main", payload: shopSettingsSnapshot(), updated_at: new Date().toISOString() }, { onConflict: "id" });
+  if (error) showOrdersSyncStatus("As opções deste aparelho não sincronizaram. Verifique a migração do Supabase e a conexão.", true);
+  else showOrdersSyncStatus("Cardápio, estoque e pedidos sincronizados entre aparelhos.");
+}
+async function loadShopSettingsFromCloud({ seedIfEmpty = false } = {}) {
+  const { data, error } = await supabase.from("theny_shop_state").select("payload").eq("id", "main").maybeSingle();
+  if (error) {
+    showOrdersSyncStatus("Sincronização pendente: execute o script SQL de sincronização no Supabase.", true);
+    return false;
+  }
+  if (data?.payload) {
+    applyShopSettings(data.payload);
+    shopSettingsReady = true;
+    return true;
+  }
+  shopSettingsReady = true;
+  if (seedIfEmpty && sellerApproved && ["owner", "editor"].includes(currentRole)) await syncShopSettingsToCloud();
+  return true;
+}
+async function startShopSettingsRealtime() {
+  if (shopSettingsChannel) return;
+  shopSettingsChannel = supabase.channel("theny-shop-state-live")
+    .on("postgres_changes", { event: "*", schema: "public", table: "theny_shop_state" }, () => { void loadShopSettingsFromCloud(); })
+    .subscribe();
+}
+function toCloudOrder(order) {
+  return {
+    id: String(order.id), customer_name: order.name, product_id: order.product,
+    product_name: order.productName || order.product, product_icon: order.productIcon || "🍧",
+    toppings: order.toppings || [], sauces: order.sauces || [], note: order.note || "",
+    base_price: Number(order.basePrice) || 0, total: orderTotal(order), done: Boolean(order.done),
+    done_at: order.doneAt || null, served_by: order.servedBy || null, created_at: order.createdAt || new Date().toISOString()
+  };
+}
+function fromCloudOrder(row) {
+  return {
+    id: row.id, name: row.customer_name, product: row.product_id, productName: row.product_name,
+    productIcon: row.product_icon, toppings: row.toppings || [], sauces: row.sauces || [],
+    note: row.note || "", basePrice: Number(row.base_price) || 0, total: Number(row.total) || 0,
+    done: Boolean(row.done), doneAt: row.done_at, servedBy: row.served_by, createdAt: row.created_at
+  };
+}
+async function fetchCloudOrders() {
+  if (!sellerApproved) return;
+  if (syncInFlight) { syncRefreshQueued = true; return; }
+  syncInFlight = true;
+  const { data, error } = await supabase.from("theny_orders").select("*").order("created_at", { ascending: false });
+  syncInFlight = false;
+  if (error) showOrdersSyncStatus("Não foi possível carregar os pedidos compartilhados. Verifique a migração e a conexão.", true);
+  else {
+    orders = (data || []).map(fromCloudOrder);
+    persist(STORAGE_KEY, orders);
+    renderOrders();
+    showOrdersSyncStatus("Pedidos e histórico sincronizados entre aparelhos.");
+  }
+  if (syncRefreshQueued) { syncRefreshQueued = false; void fetchCloudOrders(); }
+}
+async function migrateLocalOrdersToCloud() {
+  if (!sellerApproved || !["owner", "editor"].includes(currentRole) || !orders.length) return true;
+  const { error } = await supabase.from("theny_orders").upsert(orders.map(toCloudOrder), { onConflict: "id", ignoreDuplicates: true });
+  if (error) { showOrdersSyncStatus("Não foi possível migrar os pedidos salvos neste aparelho. Verifique as permissões do Supabase.", true); return false; }
+  return true;
+}
+async function startOrdersSync() {
+  if (!sellerApproved) return;
+  await loadShopSettingsFromCloud({ seedIfEmpty: true });
+  const migrated = await migrateLocalOrdersToCloud();
+  await fetchCloudOrders();
+  if (!migrated) showOrdersSyncStatus("Parte do histórico local ainda não foi enviada. Confira as permissões do Supabase.", true);
+  if (!ordersChannel) {
+    ordersChannel = supabase.channel("theny-orders-live")
+      .on("postgres_changes", { event: "*", schema: "public", table: "theny_orders" }, () => { void fetchCloudOrders(); })
+      .subscribe((status) => { if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") showOrdersSyncStatus("Pedidos salvos, mas atualização ao vivo falhou. Confira Realtime no Supabase.", true); });
+  }
+}
+async function saveCloudOrderState(order, changes) {
+  if (!sellerApproved || !["owner", "editor"].includes(currentRole)) return false;
+  const { data, error } = await supabase.from("theny_orders").update(changes).eq("id", String(order.id)).select("id").maybeSingle();
+  if (error || !data) { showOrdersSyncStatus("Não foi possível atualizar este pedido no Supabase. Tente novamente.", true); return false; }
+  return true;
+}
+async function deleteCloudOrder(order) {
+  if (!sellerApproved || !["owner", "editor"].includes(currentRole)) return;
+  const { data, error } = await supabase.from("theny_orders").delete().eq("id", String(order.id)).select("id").maybeSingle();
+  if (error || !data) { showOrdersSyncStatus("Não foi possível excluir este pedido sincronizado.", true); return; }
+  orders = orders.filter((item) => item.id !== order.id);
+  persist(STORAGE_KEY, orders); renderOrders();
+}
+async function stopOrdersSync() {
+  if (ordersChannel) { await supabase.removeChannel(ordersChannel); ordersChannel = null; }
+}
+
 function showAuthStatus(message, error = false) {
   const status = document.querySelector("#seller-auth-status");
   status.textContent = message;
@@ -284,6 +421,8 @@ function setAuthView({ signedIn = false, approved = false, owner = false, role =
 }
 async function refreshSellerAccess() {
   const checkId = ++accessCheckId;
+  await stopOrdersSync();
+  if (checkId !== accessCheckId) return;
   const { data: { session } } = await supabase.auth.getSession();
   if (checkId !== accessCheckId) return;
   authUser = session?.user || null;
@@ -327,6 +466,7 @@ async function refreshSellerAccess() {
   setAuthView({ signedIn: true, approved: true, owner: sellerIsOwner, role: currentRole });
   showAuthStatus(sellerIsOwner ? "Conta administradora conectada." : currentRole === "orders_viewer" ? "Acesso somente para visualizar pedidos." : "Conta aprovada.");
   renderStock(); renderOrders();
+  await startOrdersSync();
   if (sellerIsOwner) { await renderSellerApprovals(); await renderSellerAccounts(); }
 }
 function sellerRoleSelect(selectedRole) {
@@ -497,6 +637,7 @@ document.querySelector("#seller-resend").addEventListener("click", async () => {
   showAuthStatus("Se o cadastro estiver aguardando confirmação, enviaremos um novo e-mail.");
 });
 async function sellerLogout() {
+  await stopOrdersSync();
   await supabase.auth.signOut();
   authUser = null; sellerApproved = false; sellerIsOwner = false; currentRole = null;
   setAuthView(); showAuthStatus("Você saiu da conta.");
@@ -533,7 +674,7 @@ function renderRoute() {
 
 form.addEventListener("change", (event) => { if (event.target.name === "product") updateProduct(); updateOrderPrice(); });
 document.querySelector("#history-date").addEventListener("change", renderHistory);
-form.addEventListener("submit", (event) => {
+form.addEventListener("submit", async (event) => {
   event.preventDefault(); if (!form.reportValidity()) return;
   const name = document.querySelector("#customer-name").value.trim();
   if (!name) { document.querySelector("#customer-name").focus(); return; }
@@ -541,11 +682,18 @@ form.addEventListener("submit", (event) => {
   const selectedToppings = selected("topping").map((item) => ({ name: item, price: Number(toppingPrices[item]) || 0 }));
   const basePrice = Number(chosenProduct.price) || 0;
   const total = basePrice + selectedToppings.reduce((sum, item) => sum + item.price, 0);
-  orders.unshift({ id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`, name,
+  const order = { id: globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`, name,
     product: chosenProduct.id, productName: chosenProduct.name, productIcon: chosenProduct.icon, basePrice, total,
-    toppings: selectedToppings, sauces: selected("sauce"), note: document.querySelector("#order-note").value.trim(), createdAt: new Date().toISOString(), done: false });
-  persist(STORAGE_KEY, orders); renderOrders(); form.reset(); form.elements.product.value = "potinho"; updateProduct();
-  document.querySelector("#customer-name").focus(); notify("Pedido anotado com sucesso!");
+    toppings: selectedToppings, sauces: selected("sauce"), note: document.querySelector("#order-note").value.trim(), createdAt: new Date().toISOString(), done: false };
+  orders.unshift(order); persist(STORAGE_KEY, orders); renderOrders();
+  const submitButton = form.querySelector(".submit-button"); submitButton.disabled = true;
+  form.reset(); form.elements.product.value = "potinho"; updateProduct(); updateOrderPrice();
+  const customerOrderRow = toCloudOrder(order); delete customerOrderRow.done; delete customerOrderRow.done_at; delete customerOrderRow.served_by;
+  const { error } = await supabase.from("theny_orders").insert(customerOrderRow);
+  submitButton.disabled = false;
+  document.querySelector("#customer-name").focus();
+  if (error) notify("Pedido salvo só neste aparelho. A sincronização precisa do script SQL no Supabase.");
+  else notify("Pedido enviado para o painel da vendedora!");
 });
 
 document.querySelectorAll(".add-option-form").forEach((addForm) => addForm.addEventListener("submit", (event) => {
@@ -558,9 +706,12 @@ document.querySelector("#add-product-form").addEventListener("submit", (event) =
   if (name) { addProduct(name, document.querySelector("#new-product-icon").value, document.querySelector("#new-product-price").value); event.currentTarget.reset(); }
 });
 window.addEventListener("hashchange", renderRoute);
+window.addEventListener("online", () => { if (sellerApproved) void startOrdersSync(); else void loadShopSettingsFromCloud(); });
 renderProducts();
 makeOptions(document.querySelector("#topping-options"), toppings, "topping");
 makeOptions(document.querySelector("#sauce-options"), sauces, "sauce");
 updateProduct(); updateOrderPrice(); renderStock(); renderOrders(); renderRoute();
+void loadShopSettingsFromCloud();
+void startShopSettingsRealtime();
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("./sw.js").catch(() => {});
 
