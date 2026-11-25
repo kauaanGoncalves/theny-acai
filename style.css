@@ -41,3 +41,6 @@
 input:not([type="checkbox"]):not([type="radio"]),select,textarea{font-size:16px!important}
 .stock-price-form input,.addon-form .addon-price-input{width:88px;min-height:44px;padding:8px 9px}
 .addon-form{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 9px}.addon-form .addon-name-input{flex:1 1 140px;min-width:0}.addon-form .addon-price-input{flex:0 0 88px}
+
+/* O fundo do topo ocupa toda a largura visível no celular, mesmo quando o conteúdo está limitado. */
+@media(max-width:760px){.hero{width:100vw;max-width:none;margin-left:calc(50% - 50vw);margin-right:calc(50% - 50vw)}}
